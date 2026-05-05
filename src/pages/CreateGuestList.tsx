@@ -12,12 +12,12 @@ import { format } from "date-fns";
 import { useRealtimeGuestLists } from "@/hooks/useRealtimeGuestLists";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 const CreateGuestList = () => {
   const navigate = useNavigate();
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const { createRecurringList, createOneDayList } = useRealtimeGuestLists({ venueId: activeVenueId });
   

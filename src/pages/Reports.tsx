@@ -26,13 +26,13 @@ interface DailyReport {
   createdAt: string;
 }
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 const Reports = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { impersonatedVenueId, isImpersonating } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());

@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { VenueIndicatorPill } from "@/components/layout/VenueIndicatorPill";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 interface Guest {
   id: string;
@@ -64,7 +64,7 @@ const SmartCRM = () => {
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
   const activeVenueId = isImpersonating && impersonatedVenueId 
     ? impersonatedVenueId 
-    : DEFAULT_VENUE_ID;
+    : getPortalScopeVenueId();
     
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLoyalty, setSelectedLoyalty] = useState<string>("all");

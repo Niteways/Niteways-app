@@ -63,8 +63,7 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
   }, [isImpersonating, impersonatedVenueId]);
 
   useEffect(() => {
-    // Try to get profile from localStorage (userProfileData is what ProfileSettings saves)
-    const loadProfile = () => {
+    const loadProfileFromLocal = () => {
       const savedProfileData = localStorage.getItem("userProfileData");
       if (savedProfileData) {
         try {
@@ -83,7 +82,36 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
       if (savedPicture) setProfilePicture(savedPicture);
     };
 
-    loadProfile();
+    const applyAuthUser = (user: { email?: string | null; user_metadata?: Record<string, unknown> } | null) => {
+      if (!user) {
+        setProfileName("Guest User");
+        setProfileRole("Manager");
+        loadProfileFromLocal();
+        return;
+      }
+      const m = user.user_metadata ?? {};
+      const fromMeta = [m.full_name, m.name, m.display_name].find(
+        (v) => typeof v === "string" && String(v).trim()
+      ) as string | undefined;
+      const n = (fromMeta?.trim() || user.email?.split("@")[0] || "").trim();
+      if (n) setProfileName(n);
+      if (typeof m.role === "string" && m.role.trim()) setProfileRole(m.role.trim());
+      const savedPicture = localStorage.getItem("userProfilePicture");
+      if (savedPicture) setProfilePicture(savedPicture);
+    };
+
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      applyAuthUser(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      applyAuthUser(session?.user ?? null);
+    });
 
     // Listen for profile updates via storage event
     const handleStorageChange = (e: StorageEvent) => {
@@ -120,6 +148,8 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
     window.addEventListener("profileUpdated", handleProfileUpdate as EventListener);
 
     return () => {
+      cancelled = true;
+      subscription.unsubscribe();
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("profileUpdated", handleProfileUpdate as EventListener);
     };

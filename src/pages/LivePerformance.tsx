@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,7 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 import { countOrZero, firstBlockingError, rowsOrEmpty } from "@/utils/postgrestGraceful";
 import { format } from "date-fns";
 import {
@@ -61,9 +62,10 @@ function peakHourFromTimes(times: string[]): string {
 
 const LivePerformance = () => {
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
+  const [searchParams] = useSearchParams();
   const activeVenueId = useMemo(
-    () => (isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID),
-    [isImpersonating, impersonatedVenueId]
+    () => (isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId()),
+    [isImpersonating, impersonatedVenueId, searchParams]
   );
 
   const [loading, setLoading] = useState(true);

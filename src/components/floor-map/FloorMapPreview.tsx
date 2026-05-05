@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 interface FloorElement {
   id: string;
@@ -139,7 +139,7 @@ interface FloorMapPreviewProps {
 
 export function FloorMapPreview({ className, onTableClick, onAccept, onDecline, onGuestClick, onBlockTable, onCancelBooking, selectedDate }: FloorMapPreviewProps) {
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const [selectedTable, setSelectedTable] = useState<FloorElement | null>(null);
   const [showGuestCard, setShowGuestCard] = useState(false);

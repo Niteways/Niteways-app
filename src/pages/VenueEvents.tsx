@@ -29,7 +29,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { useVenueEvents, useCreateEvent, useUpdateEvent, useDeleteEvent, useRealtimeEvents, Event } from "@/hooks/useEvents";
 
-const DEFAULT_VENUE_ID = "d8e6dca6-7f45-4dc0-8fa7-fdb553e0b33c";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 const VenueEvents = () => {
   const navigate = useNavigate();
@@ -54,7 +54,7 @@ const VenueEvents = () => {
   // Use impersonated venue first, then URL param, then default
   const effectiveVenueId = (isImpersonating && impersonatedVenueId) 
     ? impersonatedVenueId 
-    : (venueId || DEFAULT_VENUE_ID);
+    : (venueId || getPortalScopeVenueId());
   
   const { data: events = [], isLoading } = useVenueEvents(effectiveVenueId);
   const createEvent = useCreateEvent();

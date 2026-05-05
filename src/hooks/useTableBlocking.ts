@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 interface TableBlockingOptions {
   date: string;
@@ -46,7 +46,7 @@ export function useTableBlocking({ date, venueId, onSuccess }: TableBlockingOpti
           return true;
         }
 
-        const finalVenueId = tableVenueId || venueId || DEFAULT_VENUE_ID;
+        const finalVenueId = tableVenueId || venueId || getPortalScopeVenueId();
 
         const { error } = await supabase.from("table_bookings").insert({
           venue_id: finalVenueId,

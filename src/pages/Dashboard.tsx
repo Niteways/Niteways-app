@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -21,18 +22,52 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
   const isMobile = useIsMobile();
   const { mode } = usePortal();
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
+  const [searchParams] = useSearchParams();
   const isVenuePortal = mode === "venue";
-  
-  // When impersonating, use the impersonated venue ID; otherwise use default
-  const activeVenueId = isImpersonating && impersonatedVenueId 
-    ? impersonatedVenueId 
-    : DEFAULT_VENUE_ID;
+
+  const activeVenueId = useMemo(
+    () =>
+      isImpersonating && impersonatedVenueId
+        ? impersonatedVenueId
+        : getPortalScopeVenueId(),
+    [isImpersonating, impersonatedVenueId, searchParams]
+  );
+
+  const [welcomeSubtitle, setWelcomeSubtitle] = useState("Venue dashboard");
+
+  useEffect(() => {
+    const applyUser = (user: { email?: string | null; user_metadata?: Record<string, unknown> } | null) => {
+      if (!user) {
+        setWelcomeSubtitle("Venue dashboard");
+        return;
+      }
+      const m = user.user_metadata ?? {};
+      const fromMeta = [m.full_name, m.name, m.display_name].find(
+        (v) => typeof v === "string" && String(v).trim()
+      ) as string | undefined;
+      const n = (fromMeta?.trim() || user.email?.split("@")[0] || "").trim();
+      setWelcomeSubtitle(n ? `Welcome back, ${n}` : "Venue dashboard");
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      applyUser(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applyUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const dash = useVenueDashboardStats(activeVenueId, today);
@@ -40,14 +75,14 @@ const Dashboard = () => {
   // Show mobile dashboard for venue portal on mobile
   if (isMobile && isVenuePortal) {
     return (
-      <AdminLayout title="Dashboard" subtitle="Welcome back, John">
+      <AdminLayout title="Dashboard" subtitle={welcomeSubtitle}>
         <MobileDashboard venueId={activeVenueId} dash={dash} />
       </AdminLayout>
     );
   }
 
   return (
-    <AdminLayout title="Dashboard" subtitle="Welcome back, John">
+    <AdminLayout title="Dashboard" subtitle={welcomeSubtitle}>
       <div className="space-y-6">
         {/* Venue Indicator */}
         <VenueIndicatorPill />

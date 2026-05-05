@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { AppPreview } from "@/components/venue/AppPreview";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 interface DaySpecificHours {
   open: string;
@@ -64,7 +64,7 @@ const VenueInformation = () => {
   
   // Impersonation context for venue scoping
   const { impersonatedVenueId, isImpersonating } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const [openSections, setOpenSections] = useState({
     basic: true,

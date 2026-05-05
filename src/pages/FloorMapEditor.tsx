@@ -85,7 +85,7 @@ const SHAPES = [
   { name: "Rounded", value: "rounded", icon: RectangleHorizontal },
 ];
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 // Canvas dimensions
 const CANVAS_WIDTH = 600;
@@ -95,7 +95,7 @@ const FloorMapEditor = () => {
   const { impersonatedVenueId, isImpersonating } = useImpersonation();
   
   // Use impersonated venue when in impersonation mode
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   // Always scope tables to the active venue (prevents leaking demo venue data)
   const { tables: syncedTables, addTable, deleteTable, updateTable, refetch } = useTableSync({ venueId: activeVenueId });

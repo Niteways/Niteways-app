@@ -85,13 +85,13 @@ interface TicketOrder {
 
 // Ticket types are now fetched from the database via useVenueTicketTypes
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 const Ticketing = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { impersonatedVenueId, isImpersonating } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   // Use database-backed venue tickets
   const { 

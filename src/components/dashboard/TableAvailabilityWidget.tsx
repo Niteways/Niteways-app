@@ -6,7 +6,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 const statusConfig: Record<TableStatus, { label: string; color: string; dotColor: string }> = {
   available: {
@@ -38,7 +38,7 @@ const statusConfig: Record<TableStatus, { label: string; color: string; dotColor
 
 export function TableAvailabilityWidget() {
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const today = format(new Date(), "yyyy-MM-dd");
   const { tables: tableStatuses = [], loading } = useRealtimeTableStatus(today, { venueId: activeVenueId });

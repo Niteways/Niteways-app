@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { DEFAULT_VENUE_ID as DEMO_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 const WriteReport = () => {
   const navigate = useNavigate();
@@ -112,7 +112,7 @@ const WriteReport = () => {
         const { error } = await supabase
           .from("activity_logs")
           .insert({
-            venue_id: DEMO_VENUE_ID,
+            venue_id: getPortalScopeVenueId(),
             entity_type: "report",
             action: title,
             details: content,

@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { usePortal } from "@/contexts/PortalContext";
 import { cn } from "@/lib/utils";
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 interface BookingRequest {
   id: string;
@@ -80,7 +80,7 @@ const TableBookingRequests = () => {
   const navigate = useNavigate();
   const { mode } = usePortal();
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const { tables: syncedTables, isLoaded } = useTableSync({ venueId: activeVenueId });
   const isMobile = useIsMobile();

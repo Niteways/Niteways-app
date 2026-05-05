@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 interface ListType {
   id: string;
@@ -83,7 +83,7 @@ const GuestListSettings = () => {
   const { listId } = useParams();
   const navigate = useNavigate();
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const [listName, setListName] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState("Wednesday");

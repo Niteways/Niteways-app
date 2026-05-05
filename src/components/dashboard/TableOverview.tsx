@@ -12,7 +12,7 @@ import { Users, Clock, Check, X, Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { getPortalScopeVenueId } from "@/config/venueScope";
 
 // Color mapping based on status
 const getTableStyles = (status: TableStatus) => {
@@ -42,7 +42,7 @@ const statusLabels = {
 export function TableOverview() {
   const navigate = useNavigate();
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
+  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
   
   const today = format(new Date(), "yyyy-MM-dd");
   const { tables, loading, blockTable, unblockTable, acceptBooking, declineBooking } = useRealtimeTableStatus(today, { venueId: activeVenueId });
