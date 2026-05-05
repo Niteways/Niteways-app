@@ -19,6 +19,7 @@ import { useRealtimeSpecialDatePricing } from "@/hooks/useRealtimeSpecialDatePri
 import { useTableBlocking } from "@/hooks/useTableBlocking";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { DEFAULT_VENUE_ID } from "@/config/venueScope";
 import {
   Select,
   SelectContent,
@@ -281,7 +282,7 @@ const TableBooking = () => {
 
     // Get the venue_id from the selected table or use impersonated venue
     const selectedTableData = syncedTables.find(t => t.label === newBookingData.table);
-    const venueId = activeVenueId || selectedTableData?.venueId || "f5d0702a-6bd9-42e1-bf2d-87681c103d17";
+    const venueId = activeVenueId || selectedTableData?.venueId || DEFAULT_VENUE_ID;
 
     try {
       await addBooking({

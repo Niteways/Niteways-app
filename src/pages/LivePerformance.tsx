@@ -7,6 +7,8 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { DEFAULT_VENUE_ID } from "@/config/venueScope";
+import { countOrZero, firstBlockingError, rowsOrEmpty } from "@/utils/postgrestGraceful";
 import { format } from "date-fns";
 import {
   DollarSign,
@@ -17,8 +19,6 @@ import {
   Zap,
   Target,
 } from "lucide-react";
-
-const DEFAULT_VENUE_ID = "f5d0702a-6bd9-42e1-bf2d-87681c103d17";
 
 type AlertItem = { type: "warning" | "info" | "success"; message: string };
 
@@ -81,7 +81,7 @@ const LivePerformance = () => {
 
   const load = useCallback(async () => {
     setError(null);
-    const today = new Date().toISOString().split("T")[0];
+    const today = format(new Date(), "yyyy-MM-dd");
     const dow = jsDayToRecurringDbDay(new Date());
 
     try {
@@ -91,7 +91,6 @@ const LivePerformance = () => {
         glEntriesRes,
         glCheckedRes,
         tablesCheckedRes,
-        tablesExpectedRes,
         venueTablesRes,
         tablesBookedRes,
         pendingBookingsRes,
@@ -132,12 +131,6 @@ const LivePerformance = () => {
           .eq("venue_id", activeVenueId)
           .eq("booking_date", today)
           .eq("status", "checked_in"),
-        supabase
-          .from("table_bookings")
-          .select("party_size, status")
-          .eq("venue_id", activeVenueId)
-          .eq("booking_date", today)
-          .not("status", "eq", "cancelled"),
         supabase.from("venue_tables").select("id").eq("venue_id", activeVenueId),
         supabase
           .from("table_bookings")
@@ -208,8 +201,11 @@ const LivePerformance = () => {
           .eq("recurring_guest_lists.day_of_week", dow),
         supabase
           .from("recurring_list_guests")
-          .select("checked_in_count, plus_guests, paying_guests")
-          .eq("checked_in", true),
+          .select(
+            "checked_in_count, plus_guests, checked_in, recurring_guest_lists!inner(venue_id, day_of_week)"
+          )
+          .eq("recurring_guest_lists.venue_id", activeVenueId)
+          .eq("recurring_guest_lists.day_of_week", dow),
         supabase
           .from("one_day_list_guests")
           .select("checked_in_count, plus_guests, paying_guests, one_day_guest_lists!inner(venue_id, event_date)")
@@ -217,32 +213,33 @@ const LivePerformance = () => {
           .eq("one_day_guest_lists.event_date", today),
       ]);
 
-      const err =
-        ticketsRes.error ||
-        tablesTodayRes.error ||
-        glEntriesRes.error ||
-        glCheckedRes.error ||
-        tablesCheckedRes.error ||
-        tablesExpectedRes.error ||
-        venueTablesRes.error ||
-        tablesBookedRes.error ||
-        pendingBookingsRes.error ||
-        pendingTicketsRes.error ||
-        glRecentRes.error ||
-        tbRecentRes.error ||
-        odRecentRes.error ||
-        recRecentRes.error ||
-        oneDayExpectedRes.error ||
-        recurringExpectedRes.error ||
-        recurringCheckedRes.error ||
-        oneDayCheckedRes.error;
-      if (err) {
-        setError(err.message || "Failed to load live data");
+      const blocking = firstBlockingError([
+        ticketsRes,
+        tablesTodayRes,
+        glEntriesRes,
+        glCheckedRes,
+        tablesCheckedRes,
+        venueTablesRes,
+        tablesBookedRes,
+        pendingBookingsRes,
+        pendingTicketsRes,
+        glRecentRes,
+        tbRecentRes,
+        odRecentRes,
+        recRecentRes,
+        oneDayExpectedRes,
+        recurringExpectedRes,
+        recurringCheckedRes,
+        oneDayCheckedRes,
+      ]);
+      if (blocking) {
+        setError(blocking.message || "Failed to load live data");
         return;
       }
 
-      const ticketRows = ticketsRes.data || [];
-      const tableRowsToday = tablesTodayRes.data || [];
+      const ticketRows = rowsOrEmpty(ticketsRes);
+      const tableRowsToday = rowsOrEmpty(tablesTodayRes);
+      const tableRowsNonCancelled = tableRowsToday.filter((b) => b.status !== "cancelled");
 
       let rev = 0;
       for (const row of ticketRows) {
@@ -261,13 +258,21 @@ const LivePerformance = () => {
       setRevenueTarget(stretchTarget);
 
       const glParty = (plus: number | null) => 1 + (plus ?? 0);
+      const glEntryRows = rowsOrEmpty(glEntriesRes);
+      const glCheckedRows = rowsOrEmpty(glCheckedRes);
+      const tablesCheckedRows = rowsOrEmpty(tablesCheckedRes);
+      const oneDayExpectedRows = rowsOrEmpty(oneDayExpectedRes);
+      const recurringExpectedRows = rowsOrEmpty(recurringExpectedRes);
+      const recurringCheckedRows = rowsOrEmpty(recurringCheckedRes);
+      const oneDayCheckedRows = rowsOrEmpty(oneDayCheckedRes);
+
       let expected =
-        (glEntriesRes.data || [])
+        glEntryRows
           .filter((e) => !["cancelled", "declined", "removed"].includes((e.status || "").toLowerCase()))
           .reduce((s, e) => s + glParty(e.plus_guests), 0) +
-        (tablesExpectedRes.data || []).reduce((s, b) => s + (b.party_size || 0), 0) +
-        (oneDayExpectedRes.data || []).reduce((s, g: { plus_guests: number }) => s + glParty(g.plus_guests), 0) +
-        (recurringExpectedRes.data || []).reduce((s, g: { plus_guests: number }) => s + glParty(g.plus_guests), 0);
+        tableRowsNonCancelled.reduce((s, b) => s + (b.party_size || 0), 0) +
+        oneDayExpectedRows.reduce((s, g: { plus_guests: number }) => s + glParty(g.plus_guests), 0) +
+        recurringExpectedRows.reduce((s, g: { plus_guests: number }) => s + glParty(g.plus_guests), 0);
 
       const ticketHeadsExpected = ticketRows
         .filter((r) => ["confirmed", "pending", "used"].includes(r.status))
@@ -275,8 +280,8 @@ const LivePerformance = () => {
       expected += ticketHeadsExpected;
 
       let checked =
-        (glCheckedRes.data || []).reduce((s, e) => s + glParty(e.plus_guests), 0) +
-        (tablesCheckedRes.data || []).reduce((s, b) => s + (b.party_size || 0), 0);
+        glCheckedRows.reduce((s, e) => s + glParty(e.plus_guests), 0) +
+        tablesCheckedRows.reduce((s, b) => s + (b.party_size || 0), 0);
 
       const ticketHeadsUsed = ticketRows
         .filter((r) => r.status === "used")
@@ -293,19 +298,21 @@ const LivePerformance = () => {
         return 0;
       };
 
-      for (const g of recurringCheckedRes.data || []) {
+      for (const g of recurringCheckedRows) {
         checked += incrementalHeads(g);
       }
-      for (const g of oneDayCheckedRes.data || []) {
+      for (const g of oneDayCheckedRows) {
         checked += incrementalHeads(g);
       }
 
       setGuestsIn(Math.round(checked));
       setGuestsExpected(Math.max(1, Math.round(expected)));
 
-      const totalTables = (venueTablesRes.data || []).length;
+      const venueTableRows = rowsOrEmpty(venueTablesRes);
+      const tablesBookedRows = rowsOrEmpty(tablesBookedRes);
+      const totalTables = venueTableRows.length;
       const bookedLabels = new Set(
-        (tablesBookedRes.data || []).map((b) => (b.table_number || "").trim()).filter(Boolean)
+        tablesBookedRows.map((b) => (b.table_number || "").trim()).filter(Boolean)
       );
       const occ = totalTables > 0 ? Math.min(100, Math.round((bookedLabels.size / totalTables) * 100)) : 0;
       setOccupancyPct(occ);
@@ -313,7 +320,7 @@ const LivePerformance = () => {
       const headsIn = Math.max(1, checked);
       setAvgSpend(Math.round(rev / headsIn));
 
-      const bookingTimes = (tablesTodayRes.data || [])
+      const bookingTimes = tableRowsToday
         .filter((b) => !["cancelled"].includes(b.status))
         .map((b) => b.booking_time)
         .filter(Boolean) as string[];
@@ -321,7 +328,7 @@ const LivePerformance = () => {
 
       const merged: RecentRow[] = [];
 
-      for (const r of glRecentRes.data || []) {
+      for (const r of rowsOrEmpty(glRecentRes)) {
         if (!r.check_in_time) continue;
         const ts = new Date(r.check_in_time).getTime();
         merged.push({
@@ -332,7 +339,7 @@ const LivePerformance = () => {
           sortKey: ts,
         });
       }
-      for (const r of tbRecentRes.data || []) {
+      for (const r of rowsOrEmpty(tbRecentRes)) {
         const ts = new Date(r.updated_at).getTime();
         merged.push({
           id: `tb-${r.id}`,
@@ -342,7 +349,7 @@ const LivePerformance = () => {
           sortKey: ts,
         });
       }
-      for (const r of odRecentRes.data || []) {
+      for (const r of rowsOrEmpty(odRecentRes)) {
         if (!r.check_in_time) continue;
         const ts = new Date(r.check_in_time).getTime();
         merged.push({
@@ -353,7 +360,7 @@ const LivePerformance = () => {
           sortKey: ts,
         });
       }
-      for (const r of recRecentRes.data || []) {
+      for (const r of rowsOrEmpty(recRecentRes)) {
         if (!r.check_in_time) continue;
         const ts = new Date(r.check_in_time).getTime();
         merged.push({
@@ -369,8 +376,8 @@ const LivePerformance = () => {
       setRecentCheckins(merged.slice(0, 8));
 
       const nextAlerts: AlertItem[] = [];
-      const pendB = pendingBookingsRes.count ?? 0;
-      const pendT = pendingTicketsRes.count ?? 0;
+      const pendB = countOrZero(pendingBookingsRes);
+      const pendT = countOrZero(pendingTicketsRes);
       if (pendB > 0) {
         nextAlerts.push({
           type: "warning",

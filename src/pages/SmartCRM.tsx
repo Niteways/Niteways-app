@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { VenueIndicatorPill } from "@/components/layout/VenueIndicatorPill";
 
-const DEFAULT_VENUE_ID = "f5d0702a-6bd9-42e1-bf2d-87681c103d17";
+import { DEFAULT_VENUE_ID } from "@/config/venueScope";
 
 interface Guest {
   id: string;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { countOrZero, firstBlockingError, rowsOrEmpty } from "@/utils/postgrestGraceful";
 
 function jsDayToRecurringDbDay(d: Date): number {
   const n = d.getDay();
@@ -150,27 +151,27 @@ export function useVenueDashboardStats(venueId: string, today: string): VenueDas
           .eq("one_day_guest_lists.event_date", today),
       ]);
 
-      const err =
-        ticketsRes.error ||
-        tablesTodayRes.error ||
-        glEntriesRes.error ||
-        glCheckedRes.error ||
-        tablesCheckedRes.error ||
-        venueTablesRes.error ||
-        tablesBookedRes.error ||
-        pendingBookingsRes.error ||
-        oneDayExpectedRes.error ||
-        recurringExpectedRes.error ||
-        recurringCheckedRes.error ||
-        oneDayCheckedRes.error;
-
-      if (err) {
-        setError(err.message || "Failed to load dashboard stats");
+      const blocking = firstBlockingError([
+        ticketsRes,
+        tablesTodayRes,
+        glEntriesRes,
+        glCheckedRes,
+        tablesCheckedRes,
+        venueTablesRes,
+        tablesBookedRes,
+        pendingBookingsRes,
+        oneDayExpectedRes,
+        recurringExpectedRes,
+        recurringCheckedRes,
+        oneDayCheckedRes,
+      ]);
+      if (blocking) {
+        setError(blocking.message || "Failed to load dashboard stats");
         return;
       }
 
-      const ticketRows = ticketsRes.data || [];
-      const tableRowsToday = tablesTodayRes.data || [];
+      const ticketRows = rowsOrEmpty(ticketsRes);
+      const tableRowsToday = rowsOrEmpty(tablesTodayRes);
       const tableRowsNonCancelled = tableRowsToday.filter((b) => b.status !== "cancelled");
 
       let rev = 0;
@@ -185,13 +186,21 @@ export function useVenueDashboardStats(venueId: string, today: string): VenueDas
       }
       setRevenue(Math.round(rev));
 
+      const glRows = rowsOrEmpty(glEntriesRes);
+      const glCheckedRows = rowsOrEmpty(glCheckedRes);
+      const tablesCheckedRows = rowsOrEmpty(tablesCheckedRes);
+      const oneDayExpectedRows = rowsOrEmpty(oneDayExpectedRes);
+      const recurringExpectedRows = rowsOrEmpty(recurringExpectedRes);
+      const recurringCheckedRows = rowsOrEmpty(recurringCheckedRes);
+      const oneDayCheckedRows = rowsOrEmpty(oneDayCheckedRes);
+
       let expected =
-        (glEntriesRes.data || [])
+        glRows
           .filter((e) => !["cancelled", "declined", "removed"].includes((e.status || "").toLowerCase()))
           .reduce((s, e) => s + glParty(e.plus_guests), 0) +
-        (tablesExpectedRes.data || []).reduce((s, b) => s + (b.party_size || 0), 0) +
-        (oneDayExpectedRes.data || []).reduce((s, g) => s + glParty(g.plus_guests), 0) +
-        (recurringExpectedRes.data || []).reduce((s, g) => s + glParty(g.plus_guests), 0);
+        tableRowsNonCancelled.reduce((s, b) => s + (b.party_size || 0), 0) +
+        oneDayExpectedRows.reduce((s, g) => s + glParty(g.plus_guests), 0) +
+        recurringExpectedRows.reduce((s, g) => s + glParty(g.plus_guests), 0);
 
       const ticketHeadsExpected = ticketRows
         .filter((r) => ["confirmed", "pending", "used"].includes(r.status))
@@ -199,32 +208,34 @@ export function useVenueDashboardStats(venueId: string, today: string): VenueDas
       expected += ticketHeadsExpected;
 
       let checked =
-        (glCheckedRes.data || []).reduce((s, e) => s + glParty(e.plus_guests), 0) +
-        (tablesCheckedRes.data || []).reduce((s, b) => s + (b.party_size || 0), 0);
+        glCheckedRows.reduce((s, e) => s + glParty(e.plus_guests), 0) +
+        tablesCheckedRows.reduce((s, b) => s + (b.party_size || 0), 0);
 
       const ticketHeadsUsed = ticketRows
         .filter((r) => r.status === "used")
         .reduce((s, r) => s + (r.quantity ?? 1), 0);
       checked += ticketHeadsUsed;
 
-      for (const g of recurringCheckedRes.data || []) checked += incrementalCheckinHeads(g);
-      for (const g of oneDayCheckedRes.data || []) checked += incrementalCheckinHeads(g);
+      for (const g of recurringCheckedRows) checked += incrementalCheckinHeads(g);
+      for (const g of oneDayCheckedRows) checked += incrementalCheckinHeads(g);
 
       setGuestsCheckedIn(Math.round(checked));
       setGuestsExpected(Math.max(1, Math.round(expected)));
 
       setTableBookingsTonight(tableRowsNonCancelled.length);
-      setPendingTableBookings(pendingBookingsRes.count ?? 0);
+      setPendingTableBookings(countOrZero(pendingBookingsRes));
 
-      const totalTables = (venueTablesRes.data || []).length;
+      const venueTableRows = rowsOrEmpty(venueTablesRes);
+      const tablesBookedRows = rowsOrEmpty(tablesBookedRes);
+      const totalTables = venueTableRows.length;
       const bookedLabels = new Set(
-        (tablesBookedRes.data || []).map((b) => (b.table_number || "").trim()).filter(Boolean)
+        tablesBookedRows.map((b) => (b.table_number || "").trim()).filter(Boolean)
       );
       setOccupancyPct(
         totalTables > 0 ? Math.min(100, Math.round((bookedLabels.size / totalTables) * 100)) : 0
       );
 
-      const bookingTimes = (tableRowsToday || [])
+      const bookingTimes = tableRowsToday
         .filter((b) => !["cancelled"].includes(b.status))
         .map((b) => b.booking_time)
         .filter(Boolean) as string[];

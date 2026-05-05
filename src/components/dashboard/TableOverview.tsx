@@ -12,7 +12,7 @@ import { Users, Clock, Check, X, Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-const DEFAULT_VENUE_ID = "f5d0702a-6bd9-42e1-bf2d-87681c103d17";
+import { DEFAULT_VENUE_ID } from "@/config/venueScope";
 
 // Color mapping based on status
 const getTableStyles = (status: TableStatus) => {
