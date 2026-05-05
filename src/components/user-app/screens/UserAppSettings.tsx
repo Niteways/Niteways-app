@@ -76,8 +76,8 @@ export function UserAppSettings({ onBack }: UserAppSettingsProps) {
 
     new Notification("Niteways Test", {
       body: "Push notifications are working correctly! 🎉",
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
+      icon: "/niteways-icon.svg",
+      badge: "/niteways-icon.svg",
     });
     toast.success("Test notification sent!");
   };

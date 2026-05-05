@@ -1,36 +1,57 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { MobileStatsCarousel } from "./MobileStatsCarousel";
 import { MobileQuickActionsGrid } from "./MobileQuickActionsGrid";
 import { MobileTableStatus } from "./MobileTableStatus";
 import { RecentActivity } from "./RecentActivity";
 import { UpcomingEvents } from "./UpcomingEvents";
+import type { VenueDashboardStats } from "@/hooks/useVenueDashboardStats";
 import { DollarSign, Users, CalendarCheck, TrendingUp } from "lucide-react";
-const stats = [{
-  title: "Tonight's Revenue",
-  value: "$12,847",
-  subtitle: "+18% from last Saturday",
-  icon: DollarSign,
-  variant: "gold" as const
-}, {
-  title: "Guests Checked In",
-  value: "342",
-  subtitle: "of 520 expected",
-  icon: Users,
-  variant: "teal" as const
-}, {
-  title: "Table Bookings",
-  value: "28",
-  subtitle: "6 pending approval",
-  icon: CalendarCheck,
-  variant: "coral" as const
-}, {
-  title: "Occupancy Rate",
-  value: "87%",
-  subtitle: "Peak expected 11PM",
-  icon: TrendingUp,
-  variant: "purple" as const
-}];
-export function MobileDashboard() {
+
+type MobileDashboardProps = {
+  venueId: string;
+  dash: VenueDashboardStats;
+};
+
+export function MobileDashboard({ venueId, dash }: MobileDashboardProps) {
+
+  const stats = useMemo(
+    () => [
+      {
+        title: "Tonight's Revenue",
+        value: dash.loading ? "—" : `$${dash.revenue.toLocaleString()}`,
+        subtitle: "Tickets + table bookings (today)",
+        icon: DollarSign,
+        variant: "gold" as const,
+      },
+      {
+        title: "Guests Checked In",
+        value: dash.loading ? "—" : dash.guestsCheckedIn.toString(),
+        subtitle: `of ${dash.guestsExpected} expected`,
+        icon: Users,
+        variant: "teal" as const,
+      },
+      {
+        title: "Table Bookings",
+        value: dash.loading ? "—" : dash.tableBookingsTonight.toString(),
+        subtitle: `${dash.pendingTableBookings} pending approval`,
+        icon: CalendarCheck,
+        variant: "coral" as const,
+      },
+      {
+        title: "Occupancy Rate",
+        value: dash.loading ? "—" : `${dash.occupancyPct}%`,
+        subtitle:
+          dash.peakBookingHour !== "—"
+            ? `Busiest booking slot ~${dash.peakBookingHour}`
+            : "Tables with an active booking tonight",
+        icon: TrendingUp,
+        variant: "purple" as const,
+      },
+    ],
+    [dash]
+  );
+
   return <div className="space-y-4 pb-24">
       {/* Welcome header - simplified */}
       <motion.div initial={{
@@ -50,7 +71,7 @@ export function MobileDashboard() {
       <MobileQuickActionsGrid />
 
       {/* Table Status */}
-      <MobileTableStatus />
+      <MobileTableStatus venueId={venueId} />
 
       {/* Recent Activity */}
       <motion.div initial={{

@@ -45,15 +45,15 @@ export function TableOverview() {
   const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
   
   const today = format(new Date(), "yyyy-MM-dd");
-  const { tables, blockTable, unblockTable, acceptBooking, declineBooking } = useRealtimeTableStatus(today, { venueId: activeVenueId });
+  const { tables, loading, blockTable, unblockTable, acceptBooking, declineBooking } = useRealtimeTableStatus(today, { venueId: activeVenueId });
   const [selectedTable, setSelectedTable] = useState<TableWithBooking | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
   const [isGuestProfileOpen, setIsGuestProfileOpen] = useState(false);
 
-  // Calculate stats
+  // Calculate stats (real venue_tables + bookings — no demo fallback)
   const stats = {
-    total: tables.length || 12,
+    total: tables.length,
     available: tables.filter(t => t.status === "available").length,
     booked: tables.filter(t => t.status === "confirmed").length,
     pending: tables.filter(t => t.status === "pending").length,
@@ -122,26 +122,8 @@ export function TableOverview() {
     }
   };
 
-  // Generate display tables (use DB data or sample)
-  const displayTables: TableWithBooking[] = tables.length > 0 ? tables : Array.from({ length: 12 }, (_, i) => {
-    const tableNumber = i + 1;
-    let status: TableStatus = "available";
-    const capacity = [6, 4, 8, 4, 4, 10, 4, 6, 4, 4, 8, 4][i] || 4;
-    
-    if ([0, 8, 11].includes(i)) status = "confirmed";
-    if ([2].includes(i)) status = "pending";
-    if ([5].includes(i)) status = "vip";
-    if ([3].includes(i)) status = "blocked";
-
-    const sampleBookings: Record<number, TableWithBooking["booking"]> = {
-      0: { id: "b1", guestName: "Alexander Lindberg", partySize: 4, time: "22:00", price: 1500 },
-      5: { id: "b2", guestName: "Emma Johansson", partySize: 8, time: "21:30", price: 5000 },
-      8: { id: "b3", guestName: "Marcus Berg", partySize: 6, time: "23:00", price: 2000 },
-      11: { id: "b4", guestName: "Lisa Eriksson", partySize: 4, time: "21:30", price: 1000 },
-    };
-
-    return { id: `table-${tableNumber}`, label: `T${tableNumber}`, status, capacity, booking: sampleBookings[i] };
-  });
+  const displayTables: TableWithBooking[] = tables;
+  const emptyTables = displayTables.length === 0;
 
   return (
     <>
@@ -185,7 +167,15 @@ export function TableOverview() {
           </Badge>
         </div>
 
-        {/* Table Grid - same layout as mobile */}
+        {loading && (
+          <p className="text-sm text-muted-foreground py-2">Loading tables from Supabase…</p>
+        )}
+        {!loading && emptyTables && (
+          <p className="text-sm text-muted-foreground py-4">
+            No tables configured for this venue yet. Add them in Table Map / floor plan so status shows here.
+          </p>
+        )}
+        {!emptyTables && (
         <div className="grid grid-cols-4 gap-3">
           {displayTables.map((table, index) => {
             const styles = getTableStyles(table.status);
@@ -215,6 +205,7 @@ export function TableOverview() {
             );
           })}
         </div>
+        )}
       </motion.div>
 
       {/* Table Info Dialog */}

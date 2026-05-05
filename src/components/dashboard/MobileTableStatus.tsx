@@ -5,21 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useRealtimeTableStatus, TableWithBooking, TableStatus } from "@/hooks/useRealtimeTableStatus";
-import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { GuestProfileModal } from "@/components/guests/GuestProfileModal";
 import { cn } from "@/lib/utils";
 import { Users, Clock, Check, X, Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-const DEFAULT_VENUE_ID = "f5d0702a-6bd9-42e1-bf2d-87681c103d17";
-
-export function MobileTableStatus() {
-  const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
-  
+export function MobileTableStatus({ venueId }: { venueId: string }) {
   const today = format(new Date(), "yyyy-MM-dd");
-  const { tables, blockTable, unblockTable, acceptBooking, declineBooking } = useRealtimeTableStatus(today, { venueId: activeVenueId });
+  const { tables, loading, blockTable, unblockTable, acceptBooking, declineBooking } = useRealtimeTableStatus(today, { venueId });
   const [selectedTable, setSelectedTable] = useState<TableWithBooking | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
@@ -43,9 +37,9 @@ export function MobileTableStatus() {
     }
   };
 
-  // Calculate stats
+  // Calculate stats (real venue_tables + bookings only — no demo fallback)
   const stats = {
-    total: tables.length || 12,
+    total: tables.length,
     available: tables.filter(t => t.status === "available").length,
     booked: tables.filter(t => t.status === "confirmed").length,
     pending: tables.filter(t => t.status === "pending").length,
@@ -123,27 +117,9 @@ export function MobileTableStatus() {
     }
   };
 
-  // Generate display tables (use DB data or sample)
-  const displayTables: TableWithBooking[] = tables.length > 0 ? tables : Array.from({ length: 12 }, (_, i) => {
-    const tableNumber = i + 1;
-    let status: TableStatus = "available";
-    const capacity = [6, 4, 8, 4, 4, 10, 4, 6, 4, 4, 8, 4][i] || 4;
-    
-    // Sample statuses
-    if ([0, 8, 11].includes(i)) status = "confirmed";
-    if ([2].includes(i)) status = "pending";
-    if ([5].includes(i)) status = "vip";
-    if ([3].includes(i)) status = "blocked";
+  const displayTables: TableWithBooking[] = tables;
 
-    const sampleBookings: Record<number, TableWithBooking["booking"]> = {
-      0: { id: "b1", guestName: "Alexander Lindberg", partySize: 4, time: "22:00", price: 1500 },
-      5: { id: "b2", guestName: "Emma Johansson", partySize: 8, time: "21:30", price: 5000 },
-      8: { id: "b3", guestName: "Marcus Berg", partySize: 6, time: "23:00", price: 2000 },
-      11: { id: "b4", guestName: "Lisa Eriksson", partySize: 4, time: "21:30", price: 1000 },
-    };
-
-    return { id: `table-${tableNumber}`, label: `T${tableNumber}`, status, capacity, booking: sampleBookings[i] };
-  });
+  const emptyTables = displayTables.length === 0;
 
   return (
     <>
@@ -180,6 +156,15 @@ export function MobileTableStatus() {
         </div>
         
         {/* Table grid */}
+        {loading && (
+          <p className="text-sm text-muted-foreground py-3">Loading tables…</p>
+        )}
+        {!loading && emptyTables && (
+          <p className="text-sm text-muted-foreground py-3">
+            No tables in Supabase for this venue yet. Configure them in Table Map / floor plan.
+          </p>
+        )}
+        {!emptyTables && (
         <div className="grid grid-cols-4 gap-2">
           {displayTables.map((table) => {
             const styles = getTableStyles(table.status);
@@ -206,6 +191,7 @@ export function MobileTableStatus() {
             );
           })}
         </div>
+        )}
       </motion.div>
 
       {/* Table Info Dialog */}

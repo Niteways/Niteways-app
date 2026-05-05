@@ -36,19 +36,6 @@ const statusConfig: Record<TableStatus, { label: string; color: string; dotColor
   },
 };
 
-const bookingModeConfig = {
-  direct: {
-    label: "Direct",
-    icon: CheckCircle2,
-    color: "text-teal",
-  },
-  request: {
-    label: "Request",
-    icon: Clock,
-    color: "text-amber-400",
-  },
-};
-
 export function TableAvailabilityWidget() {
   const { isImpersonating, impersonatedVenueId } = useImpersonation();
   const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : DEFAULT_VENUE_ID;
@@ -62,15 +49,8 @@ export function TableAvailabilityWidget() {
   const pending = tableStatuses.filter(t => t.status === "pending").length;
   const blocked = tableStatuses.filter(t => t.status === "blocked").length;
 
-  // Generate display tables (use real data or sample)
-  const displayTables = tableStatuses.length > 0 ? tableStatuses : [
-    { id: "1", label: "T1", status: "available" as TableStatus, capacity: 4 },
-    { id: "2", label: "T2", status: "confirmed" as TableStatus, capacity: 6 },
-    { id: "3", label: "T3", status: "pending" as TableStatus, capacity: 4 },
-    { id: "4", label: "VIP 1", status: "available" as TableStatus, capacity: 8 },
-    { id: "5", label: "VIP 2", status: "blocked" as TableStatus, capacity: 10 },
-    { id: "6", label: "T4", status: "available" as TableStatus, capacity: 4 },
-  ];
+  const displayTables = tableStatuses;
+  const showEmptyHint = !loading && displayTables.length === 0;
 
   return (
     <motion.div
@@ -111,7 +91,15 @@ export function TableAvailabilityWidget() {
             </div>
           </div>
 
-          {/* Table Grid */}
+          {loading && (
+            <p className="text-sm text-muted-foreground text-center py-2">Loading tables…</p>
+          )}
+          {showEmptyHint && (
+            <p className="text-sm text-muted-foreground text-center py-2">
+              No tables in Supabase for this venue. Counts above stay at 0 until tables exist.
+            </p>
+          )}
+          {displayTables.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             {displayTables.slice(0, 9).map((table) => {
               const status = statusConfig[table.status] || statusConfig.available;
@@ -135,6 +123,7 @@ export function TableAvailabilityWidget() {
               );
             })}
           </div>
+          )}
 
           {/* Legend */}
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2 border-t border-border">
