@@ -1,0 +1,166 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+@tailwind components;
+@tailwind utilities;
+
+/* Safe area for mobile devices with notches */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 45 93% 58%;
+    --primary-foreground: 0 0% 5%;
+
+    --secondary: 174 62% 47%;
+    --secondary-foreground: 0 0% 5%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 350 80% 65%;
+    --accent-foreground: 0 0% 5%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 45 93% 58%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 9%;
+    --sidebar-foreground: 0 0% 70%;
+    --sidebar-primary: 45 93% 58%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 45 93% 58%;
+
+    /* Custom accent colors */
+    --gold: 45 93% 58%;
+    --gold-foreground: 0 0% 5%;
+    --teal: 174 62% 47%;
+    --teal-foreground: 0 0% 5%;
+    --coral: 350 80% 65%;
+    --coral-foreground: 0 0% 5%;
+    --purple: 280 65% 60%;
+    --purple-foreground: 0 0% 98%;
+
+    /* Card gradients */
+    --gradient-gold: linear-gradient(135deg, hsl(45, 93%, 58%) 0%, hsl(35, 90%, 50%) 100%);
+    --gradient-teal: linear-gradient(135deg, hsl(174, 62%, 47%) 0%, hsl(165, 60%, 40%) 100%);
+    --gradient-coral: linear-gradient(135deg, hsl(350, 80%, 65%) 0%, hsl(340, 75%, 55%) 100%);
+    --gradient-purple: linear-gradient(135deg, hsl(280, 65%, 60%) 0%, hsl(260, 60%, 50%) 100%);
+
+    /* Shadows */
+    --shadow-glow-gold: 0 8px 32px -8px hsl(45 93% 58% / 0.3);
+    --shadow-glow-teal: 0 8px 32px -8px hsl(174 62% 47% / 0.3);
+    --shadow-glow-coral: 0 8px 32px -8px hsl(350 80% 65% / 0.3);
+    --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.4);
+  }
+
+  .dark {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-outfit antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-outfit font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .stat-card {
+    @apply rounded-2xl p-6 transition-all duration-300 hover:scale-[1.02];
+  }
+
+  .stat-card-gold {
+    background: var(--gradient-gold);
+    box-shadow: var(--shadow-glow-gold);
+  }
+
+  .stat-card-teal {
+    background: var(--gradient-teal);
+    box-shadow: var(--shadow-glow-teal);
+  }
+
+  .stat-card-coral {
+    background: var(--gradient-coral);
+    box-shadow: var(--shadow-glow-coral);
+  }
+
+  .nav-section-title {
+    @apply text-xs font-medium uppercase tracking-wider text-muted-foreground/60 px-3 mb-2;
+  }
+
+  .glass-card {
+    @apply bg-card/50 backdrop-blur-sm rounded-xl;
+  }
+}
+
+/* Hide scrollbar for mobile carousel */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}

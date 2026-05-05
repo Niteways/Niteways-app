@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn.lock
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+*.sublime-*
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Database
+*.sqlite
+*.db
+postgres_data/
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+firebase-adminsdk-*.json
+
+# Mapbox tokens — never commit real tokens
+mobile-app/src/config/mapbox.ts
+
+# React Native
+mobile-app/ios/Pods/
+mobile-app/ios/build/
+mobile-app/android/.gradle/
+mobile-app/android/app/build/
+mobile-app/android/build/
+mobile-app/android/local.properties
+mobile-app/android/app/src/main/assets/index.android.bundle
+mobile-app/android/app/src/main/assets/index.android.bundle.map
+*.keystore
+!debug.keystore
+
+# Next.js
+.next/
+out/
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

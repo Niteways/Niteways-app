@@ -1,0 +1,7 @@
+project_id = "xzrftpylcjrkwamufofa"
+
+[functions.detect-floor-shapes]
+verify_jwt = false
+
+[functions.booking-notification]
+verify_jwt = false
