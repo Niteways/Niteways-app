@@ -83,6 +83,8 @@ import AdminImpersonationLogs from "./pages/admin/AdminImpersonationLogs";
 import AdminAgreements from "./pages/admin/AdminAgreements";
 import WriteReport from "./pages/WriteReport";
 import ProfileSettings from "./pages/ProfileSettings";
+import VenueLogin from "./pages/VenueLogin";
+import { VenuePortalGate } from "@/components/auth/VenuePortalGate";
 
 const queryClient = new QueryClient();
 
@@ -96,6 +98,8 @@ const App = () => (
           <VenuePortalOnlyRedirect />
           <ImpersonationProvider>
           <Routes>
+            <Route path="/login" element={<VenueLogin />} />
+            <Route element={<VenuePortalGate />}>
             {/* Venue Portal Routes */}
             <Route path="/" element={<Dashboard />} />
             <Route path="/tables" element={<TableBooking />} />
@@ -139,6 +143,9 @@ const App = () => (
             <Route path="/profile/settings" element={<UserProfile />} />
             <Route path="/more" element={<MorePage />} />
             <Route path="/notifications" element={<Notifications />} />
+
+            <Route path="*" element={<NotFound />} />
+            </Route>
 
             {/* Admin Portal Routes - Protected by role */}
             <Route path="/admin" element={
@@ -307,7 +314,6 @@ const App = () => (
               </ProtectedRoute>
             } />
 
-            <Route path="*" element={<NotFound />} />
           </Routes>
           </ImpersonationProvider>
         </PortalProvider>
