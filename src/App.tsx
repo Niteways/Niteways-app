@@ -86,6 +86,7 @@ import ProfileSettings from "./pages/ProfileSettings";
 import VenueLogin from "./pages/VenueLogin";
 import AuthCallback from "./pages/AuthCallback";
 import { VenuePortalGate } from "@/components/auth/VenuePortalGate";
+import { RecoveryHashRedirect } from "@/components/auth/RecoveryHashRedirect";
 
 const queryClient = new QueryClient();
 
@@ -95,6 +96,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <RecoveryHashRedirect />
         <PortalProvider>
           <VenuePortalOnlyRedirect />
           <ImpersonationProvider>
