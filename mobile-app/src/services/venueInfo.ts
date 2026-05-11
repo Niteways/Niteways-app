@@ -58,6 +58,12 @@ export function serializeOpeningHoursForCompare(h: OpeningHoursJson): string {
     return parts.join('|');
 }
 
+/** Same pipeline as post-fetch normalization — avoids false mismatch vs raw editor state. */
+export function canonicalOpeningHoursFingerprint(h: OpeningHoursJson): string {
+    const clone = JSON.parse(JSON.stringify(h)) as OpeningHoursJson;
+    return serializeOpeningHoursForCompare(normalizeOpeningHours(clone));
+}
+
 function coerceOpeningHoursJsonObject(raw: unknown): Record<string, unknown> | null {
     if (raw == null) return null;
     if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
@@ -300,7 +306,13 @@ function trimOrNull(v: string | undefined): string | null | undefined {
 export async function updateVenueProfile(
     venueId: string,
     patch: VenueProfilePatch
-): Promise<{ ok: boolean; error?: string; missingColumns?: string[] }> {
+): Promise<{
+    ok: boolean;
+    error?: string;
+    missingColumns?: string[];
+    /** Present only when this patch included opening hours; null if UPDATE returned no row payload. */
+    returnedOpeningHoursJson?: OpeningHoursJson | null;
+}> {
     const payload: Record<string, unknown> = {};
     if (patch.name !== undefined) payload.name = patch.name.trim() || null;
     if (patch.category !== undefined) payload.category = patch.category;
@@ -329,8 +341,10 @@ export async function updateVenueProfile(
     if (patch.latitude !== undefined) payload.latitude = patch.latitude;
     if (patch.longitude !== undefined) payload.longitude = patch.longitude;
 
+    const patchIncludedOpeningHours = patch.opening_hours_json !== undefined;
+
     const attempt = async (body: Record<string, unknown>) =>
-        supabase.from('venues').update(body).eq('id', venueId);
+        supabase.from('venues').update(body).eq('id', venueId).select('opening_hours_json').maybeSingle();
 
     let res = await attempt(payload);
     const missing: string[] = [];
@@ -360,7 +374,21 @@ export async function updateVenueProfile(
         console.warn('[venueInfo] updateVenueProfile', res.error.message);
         return { ok: false, error: res.error.message, missingColumns: missing.length ? missing : undefined };
     }
-    return { ok: true, missingColumns: missing.length ? missing : undefined };
+
+    let returnedOpeningHoursJson: OpeningHoursJson | null | undefined = undefined;
+    if (patchIncludedOpeningHours) {
+        const row = res.data as { opening_hours_json?: unknown } | null;
+        returnedOpeningHoursJson =
+            row && row.opening_hours_json !== undefined
+                ? normalizeOpeningHours(row.opening_hours_json)
+                : null;
+    }
+
+    return {
+        ok: true,
+        missingColumns: missing.length ? missing : undefined,
+        returnedOpeningHoursJson,
+    };
 }
 
 /** Realtime: same `venues` row as the web portal — keeps Venue Info in sync when Settings saves. */

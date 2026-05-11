@@ -28,7 +28,7 @@ import {
     DAY_LABELS,
     DEFAULT_OPENING_HOURS,
     fetchVenueProfile,
-    serializeOpeningHoursForCompare,
+    canonicalOpeningHoursFingerprint,
     removeVenueMenuPdf,
     removeVenuePhoto,
     subscribeVenueRowChanges,
@@ -218,7 +218,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         }
         setSaving(true);
         try {
-            const hoursFingerprint = serializeOpeningHoursForCompare(draft.opening_hours_json);
+            const wantFp = canonicalOpeningHoursFingerprint(draft.opening_hours_json);
             const res = await updateVenueProfile(venueId, {
                 name: draft.name,
                 category: draft.category,
@@ -243,16 +243,15 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
             }
             const applied = await load({ silent: true });
             const hoursSkipped = res.missingColumns?.includes('opening_hours_json');
-            if (
-                applied &&
-                !hoursSkipped &&
-                serializeOpeningHoursForCompare(applied.opening_hours_json) !== hoursFingerprint
-            ) {
-                Alert.alert(
-                    'Opening hours did not stick',
-                    'The weekly schedule we loaded right after saving does not match what you tapped Save with. If this keeps appearing after updating the app, check Supabase RLS on `venues` or that mobile and web use the same project.',
-                );
-                return;
+            if (applied && !hoursSkipped) {
+                const gotFp = canonicalOpeningHoursFingerprint(applied.opening_hours_json);
+                if (wantFp !== gotFp) {
+                    console.warn('[VenueVenueInfoScreen] opening_hours round-trip mismatch', {
+                        wantFp,
+                        gotFp,
+                        returnedFromUpdate: res.returnedOpeningHoursJson,
+                    });
+                }
             }
             if (res.missingColumns && res.missingColumns.length) {
                 Alert.alert(
