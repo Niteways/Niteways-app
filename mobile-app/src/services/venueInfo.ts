@@ -88,6 +88,22 @@ function coerceDayClosed(value: unknown, fallback: boolean): boolean {
     return fallback;
 }
 
+/** Always emits all seven keys — avoids JSONB writes where a weekday key never reaches Postgres. */
+export function materializeOpeningHoursJsonForPersist(h: OpeningHoursJson): OpeningHoursJson {
+    const out = {} as OpeningHoursJson;
+    for (const k of DAY_KEYS) {
+        const cell = h[k];
+        const d = DEFAULT_OPENING_HOURS[k];
+        const src = cell && typeof cell === 'object' ? cell : d;
+        out[k] = {
+            closed: coerceDayClosed(src.closed, d.closed),
+            open: typeof src.open === 'string' ? src.open : d.open,
+            close: typeof src.close === 'string' ? src.close : d.close,
+        };
+    }
+    return out;
+}
+
 const UI_DAY_TO_DAY_KEY: Record<string, DayKey> = {
     monday: 'mon',
     tuesday: 'tue',
@@ -335,8 +351,9 @@ export async function updateVenueProfile(
     if (patch.google_maps_url !== undefined) payload.google_maps_url = trimOrNull(patch.google_maps_url);
     if (patch.gallery_images !== undefined) payload.gallery_images = patch.gallery_images;
     if (patch.opening_hours_json !== undefined) {
-        payload.opening_hours_json = patch.opening_hours_json;
-        payload.opening_days = openingHoursJsonToOpeningDaysCsv(patch.opening_hours_json);
+        const hours = materializeOpeningHoursJsonForPersist(patch.opening_hours_json);
+        payload.opening_hours_json = hours;
+        payload.opening_days = openingHoursJsonToOpeningDaysCsv(hours);
     }
     if (patch.latitude !== undefined) payload.latitude = patch.latitude;
     if (patch.longitude !== undefined) payload.longitude = patch.longitude;

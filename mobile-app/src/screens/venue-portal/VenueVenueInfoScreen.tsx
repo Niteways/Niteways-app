@@ -26,9 +26,10 @@ import { useVenuePortal } from '../../context/VenuePortalContext';
 import {
     DAY_KEYS,
     DAY_LABELS,
-    DEFAULT_OPENING_HOURS,
     fetchVenueProfile,
     canonicalOpeningHoursFingerprint,
+    materializeOpeningHoursJsonForPersist,
+    normalizeOpeningHours,
     removeVenueMenuPdf,
     removeVenuePhoto,
     subscribeVenueRowChanges,
@@ -82,7 +83,7 @@ const EMPTY_DRAFT: Draft = {
     menu_url: '',
     google_maps_url: '',
     gallery_images: [],
-    opening_hours_json: { ...DEFAULT_OPENING_HOURS },
+    opening_hours_json: normalizeOpeningHours(null),
     latitude: null,
     longitude: null,
 };
@@ -218,7 +219,9 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         }
         setSaving(true);
         try {
-            const wantFp = canonicalOpeningHoursFingerprint(draft.opening_hours_json);
+            const wantFp = canonicalOpeningHoursFingerprint(
+                materializeOpeningHoursJsonForPersist(draft.opening_hours_json),
+            );
             const res = await updateVenueProfile(venueId, {
                 name: draft.name,
                 category: draft.category,

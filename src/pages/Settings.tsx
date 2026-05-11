@@ -47,6 +47,7 @@ import {
   DAY_KEYS,
   DAY_KEY_LABELS,
   DEFAULT_OPENING_HOURS,
+  materializeOpeningHoursJsonForPersist,
   normalizeOpeningHours,
   openingHoursJsonToOpeningDaysCsv,
   type DayKey,
@@ -247,14 +248,15 @@ const Settings = () => {
         default_age_limit = Number.isFinite(n) ? Math.max(0, n) : null;
       }
 
+      const hoursForPersist = materializeOpeningHoursJsonForPersist(openingHours);
       const payload: Record<string, unknown> = {
         name: venueName.trim() || "Venue",
         description: venueDescription.trim() || null,
         email: venueEmail.trim() || null,
         phone: venuePhone.trim() || null,
         address: venueAddress.trim() || null,
-        opening_hours_json: openingHours,
-        opening_days: openingHoursJsonToOpeningDaysCsv(openingHours),
+        opening_hours_json: hoursForPersist,
+        opening_days: openingHoursJsonToOpeningDaysCsv(hoursForPersist),
         default_age_limit,
         ...(default_age_limit !== null ? { age_limit: default_age_limit } : {}),
         booking_cutoff_hours: parseNum(cutoffHours),

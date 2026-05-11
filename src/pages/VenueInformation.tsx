@@ -48,6 +48,7 @@ import { AppPreview } from "@/components/venue/AppPreview";
 import {
   deriveOpeningDayLabelsFromJson,
   jsonToUiOpeningHours,
+  materializeOpeningHoursJsonForPersist,
   normalizeOpeningHours,
   uiOpeningStateToJson,
 } from "@/lib/venueOpeningHours";
@@ -290,14 +291,16 @@ const VenueInformation = () => {
     }
     setIsSaving(true);
     try {
-      const opening_hours_json = uiOpeningStateToJson(venueData.openingDays, venueData.openingHours);
+      const opening_hours_json = materializeOpeningHoursJsonForPersist(
+        uiOpeningStateToJson(venueData.openingDays, venueData.openingHours),
+      );
       const patch: Record<string, unknown> = {
         name: venueData.name,
         description: venueData.description,
         music_genre: venueData.musicGenres.join(", "),
         opening_hours: JSON.stringify(venueData.openingHours),
         opening_hours_json,
-        opening_days: venueData.openingDays.join(", "),
+        opening_days: deriveOpeningDayLabelsFromJson(opening_hours_json).join(", "),
         entrance_rules: venueData.entranceRules,
         address: venueData.location.address,
         spotify_link: venueData.spotifyPlaylist,

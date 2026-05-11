@@ -60,6 +60,25 @@ function coerceDayClosed(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+/**
+ * Always emits all seven keys for JSONB REPLACE. Partial objects have caused weekday toggles
+ * (e.g. Wednesday) to stick as defaults after save when a day key was missing from the payload.
+ */
+export function materializeOpeningHoursJsonForPersist(h: OpeningHoursJson): OpeningHoursJson {
+  const out = {} as OpeningHoursJson;
+  for (const k of DAY_KEYS) {
+    const cell = h[k];
+    const d = DEFAULT_OPENING_HOURS[k];
+    const src = cell && typeof cell === "object" ? cell : d;
+    out[k] = {
+      closed: coerceDayClosed(src.closed, d.closed),
+      open: typeof src.open === "string" ? src.open : d.open,
+      close: typeof src.close === "string" ? src.close : d.close,
+    };
+  }
+  return out;
+}
+
 /** Keys match `VenueInformation` state (`day.toLowerCase()` on English weekday names). */
 export const UI_DAY_TO_DAY_KEY: Record<string, DayKey> = {
   monday: "mon",
