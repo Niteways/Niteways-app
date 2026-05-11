@@ -28,7 +28,6 @@ import {
     DAY_LABELS,
     DEFAULT_OPENING_HOURS,
     fetchVenueProfile,
-    normalizeOpeningHours,
     removeVenueMenuPdf,
     removeVenuePhoto,
     subscribeVenueRowChanges,
@@ -120,12 +119,12 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
     }, []);
 
-    const load = useCallback(async () => {
+    const load = useCallback(async (opts?: { silent?: boolean }) => {
         if (!venueId) {
-            setLoading(false);
+            if (!opts?.silent) setLoading(false);
             return;
         }
-        setLoading(true);
+        if (!opts?.silent) setLoading(true);
         try {
             const profile = await fetchVenueProfile(venueId);
             if (profile) {
@@ -147,7 +146,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                     menu_url: profile.menu_url,
                     google_maps_url: profile.google_maps_url,
                     gallery_images: profile.gallery_images,
-                    opening_hours_json: normalizeOpeningHours(profile.opening_hours_json),
+                    opening_hours_json: profile.opening_hours_json,
                     latitude: profile.latitude,
                     longitude: profile.longitude,
                 };
@@ -156,7 +155,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 setRemoteStale(false);
             }
         } finally {
-            setLoading(false);
+            if (!opts?.silent) setLoading(false);
         }
     }, [venueId]);
 
@@ -238,6 +237,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 Alert.alert('Could not save', res.error || 'Please try again.');
                 return;
             }
+            await load({ silent: true });
             if (res.missingColumns && res.missingColumns.length) {
                 Alert.alert(
                     'Partially saved',
@@ -248,12 +248,10 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
             } else {
                 Alert.alert('Saved', 'Venue info updated.');
             }
-            setOriginal(draft);
-            setRemoteStale(false);
         } finally {
             setSaving(false);
         }
-    }, [venueId, draft]);
+    }, [venueId, draft, load]);
 
 
     /**
@@ -411,7 +409,12 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 >
                     <OpeningHoursSection
                         hours={draft.opening_hours_json}
-                        onChange={(v) => setField('opening_hours_json', v)}
+                        onChange={(recipe) =>
+                            setDraft((d) => ({
+                                ...d,
+                                opening_hours_json: recipe(d.opening_hours_json),
+                            }))
+                        }
                     />
                 </AccordionSection>
 
@@ -1264,16 +1267,20 @@ function OpeningHoursSection({
     onChange,
 }: {
     hours: OpeningHoursJson;
-    onChange: (v: OpeningHoursJson) => void;
+    /** Functional updates avoid stale `hours` overwrites when toggling multiple days quickly. */
+    onChange: (recipe: (prev: OpeningHoursJson) => OpeningHoursJson) => void;
 }) {
     const [picker, setPicker] = useState<{ day: DayKey; field: 'open' | 'close' } | null>(null);
 
     const updateDay = (k: DayKey, patch: Partial<OpeningHoursJson[DayKey]>) => {
-        onChange({ ...hours, [k]: { ...hours[k], ...patch } });
+        onChange((prev) => ({ ...prev, [k]: { ...prev[k], ...patch } }));
     };
 
     const toggleDayOpen = (k: DayKey) => {
-        updateDay(k, { closed: !hours[k].closed });
+        onChange((prev) => ({
+            ...prev,
+            [k]: { ...prev[k], closed: !prev[k].closed },
+        }));
     };
 
     const openDays = DAY_KEYS.filter((k) => !hours[k].closed);
@@ -1353,7 +1360,11 @@ function OpeningHoursSection({
                 onCancel={() => setPicker(null)}
                 onConfirm={(next) => {
                     if (picker) {
-                        updateDay(picker.day, { [picker.field]: next });
+                        const { day, field } = picker;
+                        onChange((prev) => ({
+                            ...prev,
+                            [day]: { ...prev[day], [field]: next },
+                        }));
                     }
                     setPicker(null);
                 }}

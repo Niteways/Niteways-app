@@ -349,6 +349,10 @@ export async function updateVenueProfile(
         const col = extractMissingColumn(res.error.message ?? '');
         if (!col || !(col in payload)) break;
         delete payload[col];
+        // Never leave `opening_days` without `opening_hours_json` from this patch — avoids CSV-only writes.
+        if (col === 'opening_hours_json') {
+            delete payload.opening_days;
+        }
         missing.push(col);
         if (Object.keys(payload).length === 0) {
             return {
