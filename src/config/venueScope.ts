@@ -1,7 +1,10 @@
 /**
  * Resolves which `venues.id` the web venue portal uses when not impersonating.
  *
- * Order (first match wins):
+ * For signed-in venue owners, React pages should prefer {@link useResolvedPortalVenueId}
+ * (`profiles.venue_id` → `venues.owner_id` → auth metadata), then fall back to this helper.
+ *
+ * Order here (first match wins) when no profile-based id is in use:
  * 1. URL query `?venue_id=` or `?venue=` (UUID) — also saved to sessionStorage for next visits
  * 2. `sessionStorage.niteways_portal_venue_id` (UUID) — set manually in devtools or by future UI
  * 3. `VITE_DEFAULT_VENUE_ID` from the **build** (Railway must expose this var during `vite build`)

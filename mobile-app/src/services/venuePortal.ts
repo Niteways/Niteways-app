@@ -89,6 +89,18 @@ export async function resolveVenueForUser(userId: string): Promise<{
         return { venueId: profile.venue_id, venueName: v?.name ?? null };
     }
 
+    const { data: teamRow, error: teamErr } = await supabase
+        .from('venue_team_members')
+        .select('venue_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+    if (!teamErr && teamRow?.venue_id) {
+        const { data: v } = await supabase.from('venues').select('name').eq('id', teamRow.venue_id).maybeSingle();
+        return { venueId: teamRow.venue_id, venueName: v?.name ?? null };
+    }
+
     const { data: owned } = await supabase
         .from('venues')
         .select('id, name')

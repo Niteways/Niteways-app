@@ -1174,7 +1174,7 @@ function OpeningHoursSection({
                                             {formatTimeDisplay(day.open)}
                                         </Text>
                                     </TouchableOpacity>
-                                    <Text style={styles.hoursDash}>â€”</Text>
+                                    <Text style={styles.hoursDash}>{'\u2013'}</Text>
                                     <TouchableOpacity
                                         style={styles.timePill}
                                         onPress={() => setPicker({ day: k, field: 'close' })}
@@ -1196,7 +1196,7 @@ function OpeningHoursSection({
                 value={pickerValue}
                 title={
                     picker
-                        ? `${DAY_LABELS[picker.day]} Â· ${
+                        ? `${DAY_LABELS[picker.day]} \u00b7 ${
                               picker.field === 'open' ? 'Opening time' : 'Closing time'
                           }`
                         : ''

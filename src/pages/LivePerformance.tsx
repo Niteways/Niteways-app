@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -7,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useImpersonation } from "@/contexts/ImpersonationContext";
-import { getPortalScopeVenueId } from "@/config/venueScope";
+import { useResolvedPortalVenueId } from "@/hooks/useResolvedPortalVenueId";
 import { countOrZero, firstBlockingError, rowsOrEmpty } from "@/utils/postgrestGraceful";
 import { format } from "date-fns";
 import {
@@ -61,12 +59,7 @@ function peakHourFromTimes(times: string[]): string {
 }
 
 const LivePerformance = () => {
-  const { isImpersonating, impersonatedVenueId } = useImpersonation();
-  const [searchParams] = useSearchParams();
-  const activeVenueId = useMemo(
-    () => (isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId()),
-    [isImpersonating, impersonatedVenueId, searchParams]
-  );
+  const { activeVenueId } = useResolvedPortalVenueId();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +76,10 @@ const LivePerformance = () => {
 
   const load = useCallback(async () => {
     setError(null);
+    if (!activeVenueId) {
+      setLoading(false);
+      return;
+    }
     const today = format(new Date(), "yyyy-MM-dd");
     const dow = jsDayToRecurringDbDay(new Date());
 

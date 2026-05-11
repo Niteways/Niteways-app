@@ -12,7 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
-import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { useResolvedPortalVenueId } from "@/hooks/useResolvedPortalVenueId";
 import { VenueIndicatorPill } from "@/components/layout/VenueIndicatorPill";
 import {
   Dialog,
@@ -45,7 +45,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { AppPreview } from "@/components/venue/AppPreview";
 
-import { getPortalScopeVenueId } from "@/config/venueScope";
+import {
+  deriveOpeningDayLabelsFromJson,
+  jsonToUiOpeningHours,
+  normalizeOpeningHours,
+  uiOpeningStateToJson,
+} from "@/lib/venueOpeningHours";
 
 interface DaySpecificHours {
   open: string;
@@ -62,9 +67,7 @@ const VenueInformation = () => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Impersonation context for venue scoping
-  const { impersonatedVenueId, isImpersonating } = useImpersonation();
-  const activeVenueId = isImpersonating && impersonatedVenueId ? impersonatedVenueId : getPortalScopeVenueId();
+  const { activeVenueId } = useResolvedPortalVenueId();
   
   const [openSections, setOpenSections] = useState({
     basic: true,
@@ -106,13 +109,15 @@ const VenueInformation = () => {
 
   // Fetch venue data from Supabase on mount
   useEffect(() => {
+    if (!activeVenueId) return;
+
     const fetchVenue = async () => {
       setIsLoading(true);
       const { data, error } = await supabase
         .from("venues")
         .select("*")
         .eq("id", activeVenueId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Error fetching venue:", error);
@@ -121,13 +126,29 @@ const VenueInformation = () => {
       }
 
       if (data) {
-        // Parse opening hours JSON if stored as JSON
-        let parsedHours: Record<string, DaySpecificHours> = {};
-        if (data.opening_hours) {
+        const row = data as Record<string, unknown>;
+        const json = normalizeOpeningHours(row.opening_hours_json);
+        let parsedHours: Record<string, DaySpecificHours> = jsonToUiOpeningHours(json);
+
+        const fromDbDays = data.opening_days
+          ? String(data.opening_days)
+              .split(", ")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+        let openingDaysList =
+          fromDbDays.length > 0 ? fromDbDays : deriveOpeningDayLabelsFromJson(json);
+
+        const hasJson =
+          row.opening_hours_json != null && typeof row.opening_hours_json === "object";
+        if (!hasJson && data.opening_hours) {
           try {
-            parsedHours = JSON.parse(data.opening_hours);
+            const legacy = JSON.parse(data.opening_hours) as Record<string, DaySpecificHours>;
+            if (legacy && typeof legacy === "object") {
+              parsedHours = { ...parsedHours, ...legacy };
+            }
           } catch {
-            // Fallback to empty if not JSON
+            /* ignore */
           }
         }
 
@@ -137,13 +158,20 @@ const VenueInformation = () => {
           ageReqs = data.age_requirements as AgeRequirements;
         }
 
+        const defaultAge =
+          typeof row.default_age_limit === "number" && Number.isFinite(row.default_age_limit)
+            ? Math.max(0, Math.round(row.default_age_limit))
+            : typeof data.age_limit === "number" && Number.isFinite(data.age_limit)
+              ? Math.max(0, Math.round(data.age_limit))
+              : 21;
+
         // Directly set venue data from database - don't fall back to previous values
         setVenueData({
           name: data.name || "",
           description: data.description || "",
           musicGenres: data.music_genre ? data.music_genre.split(", ").filter(Boolean) : [],
           openingHours: parsedHours,
-          openingDays: data.opening_days ? data.opening_days.split(", ").filter(Boolean) : [],
+          openingDays: openingDaysList,
           entranceRules: data.entrance_rules || "",
           location: {
             address: data.address || "",
@@ -152,9 +180,9 @@ const VenueInformation = () => {
           spotifyPlaylist: data.spotify_link || "",
           instagram: data.instagram_handle || "",
           menuPdf: null,
-          ageLimit: data.age_limit || 21,
+          ageLimit: defaultAge,
           ageRequirements: ageReqs,
-          dressCode: (data as any).dress_code || "",
+          dressCode: (data as { dress_code?: string }).dress_code || "",
           galleryImages: data.gallery_images || [],
         });
       }
@@ -172,7 +200,7 @@ const VenueInformation = () => {
         table: "venues",
         filter: `id=eq.${activeVenueId}`,
       }, () => {
-        fetchVenue();
+        void fetchVenue();
       })
       .subscribe();
 
@@ -220,26 +248,32 @@ const VenueInformation = () => {
   };
 
   const handleSave = async () => {
+    if (!activeVenueId) {
+      toast.error("Venue is not resolved yet. Wait a moment and try again.");
+      return;
+    }
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("venues")
-        .update({
-          name: venueData.name,
-          description: venueData.description,
-          music_genre: venueData.musicGenres.join(", "),
-          opening_hours: JSON.stringify(venueData.openingHours),
-          opening_days: venueData.openingDays.join(", "),
-          entrance_rules: venueData.entranceRules,
-          address: venueData.location.address,
-          spotify_link: venueData.spotifyPlaylist,
-          instagram_handle: venueData.instagram,
-          age_limit: venueData.ageLimit,
-          age_requirements: venueData.ageRequirements,
-          dress_code: venueData.dressCode,
-          gallery_images: venueData.galleryImages,
-        })
-        .eq("id", activeVenueId);
+      const opening_hours_json = uiOpeningStateToJson(venueData.openingDays, venueData.openingHours);
+      const patch: Record<string, unknown> = {
+        name: venueData.name,
+        description: venueData.description,
+        music_genre: venueData.musicGenres.join(", "),
+        opening_hours: JSON.stringify(venueData.openingHours),
+        opening_hours_json,
+        opening_days: venueData.openingDays.join(", "),
+        entrance_rules: venueData.entranceRules,
+        address: venueData.location.address,
+        spotify_link: venueData.spotifyPlaylist,
+        instagram_handle: venueData.instagram,
+        age_limit: venueData.ageLimit,
+        default_age_limit: venueData.ageLimit,
+        age_requirements: venueData.ageRequirements,
+        dress_code: venueData.dressCode,
+        gallery_images: venueData.galleryImages,
+      };
+
+      const { error } = await supabase.from("venues").update(patch).eq("id", activeVenueId);
 
       if (error) throw error;
       toast.success("Venue information saved successfully");
