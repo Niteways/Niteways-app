@@ -140,7 +140,7 @@ const VenueInformation = () => {
 
           const fromDbDays = data.opening_days
             ? String(data.opening_days)
-                .split(", ")
+                .split(/,\s*/)
                 .map((s) => s.trim())
                 .filter(Boolean)
             : [];
@@ -148,7 +148,8 @@ const VenueInformation = () => {
             fromDbDays.length > 0 ? fromDbDays : deriveOpeningDayLabelsFromJson(json);
 
           const hasJson =
-            row.opening_hours_json != null && typeof row.opening_hours_json === "object";
+            row.opening_hours_json != null &&
+            (typeof row.opening_hours_json === "object" || typeof row.opening_hours_json === "string");
           if (!hasJson && data.opening_hours) {
             try {
               const legacy = JSON.parse(data.opening_hours) as Record<string, DaySpecificHours>;

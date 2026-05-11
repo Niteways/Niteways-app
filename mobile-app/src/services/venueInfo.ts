@@ -62,7 +62,17 @@ function coerceOpeningHoursJsonObject(raw: unknown): Record<string, unknown> | n
     return null;
 }
 
-const OPENING_DAY_LABEL_TO_KEY: Record<string, DayKey> = {
+function coerceDayClosed(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+        const s = value.trim().toLowerCase();
+        if (s === 'false' || s === '0' || s === 'no') return false;
+        if (s === 'true' || s === '1' || s === 'yes') return true;
+    }
+    return fallback;
+}
+
+const UI_DAY_TO_DAY_KEY: Record<string, DayKey> = {
     monday: 'mon',
     tuesday: 'tue',
     wednesday: 'wed',
@@ -71,6 +81,35 @@ const OPENING_DAY_LABEL_TO_KEY: Record<string, DayKey> = {
     saturday: 'sat',
     sunday: 'sun',
 };
+
+/** Match web `openingDayTokenToDayKey` — used for `opening_days` CSV and loose JSON keys (e.g. Wed). */
+function openingDayTokenToDayKey(token: string): DayKey | null {
+    const raw = token.trim().toLowerCase();
+    if (!raw) return null;
+    const full = UI_DAY_TO_DAY_KEY[raw];
+    if (full) return full;
+
+    const abbrevs: Record<string, DayKey> = {
+        mon: 'mon',
+        tue: 'tue',
+        tues: 'tue',
+        wed: 'wed',
+        weds: 'wed',
+        thu: 'thu',
+        thur: 'thu',
+        thurs: 'thu',
+        fri: 'fri',
+        sat: 'sat',
+        sun: 'sun',
+    };
+    return abbrevs[raw] ?? null;
+}
+
+function resolveJsonCellDayKey(rawKey: string): DayKey | null {
+    const k = rawKey.trim().toLowerCase();
+    if ((DAY_KEYS as readonly string[]).includes(k)) return k as DayKey;
+    return openingDayTokenToDayKey(k);
+}
 
 /** Align with web `mergeOpeningDaysCsvIntoJson` — opening_days can list days open when JSON.closed drifted. */
 function mergeOpeningDaysCsvIntoJson(json: OpeningHoursJson, openingDaysCsv: unknown): OpeningHoursJson {
@@ -82,7 +121,7 @@ function mergeOpeningDaysCsvIntoJson(json: OpeningHoursJson, openingDaysCsv: unk
     if (parts.length === 0) return json;
     const next: OpeningHoursJson = JSON.parse(JSON.stringify(json));
     for (const label of parts) {
-        const dk = OPENING_DAY_LABEL_TO_KEY[label.toLowerCase()];
+        const dk = openingDayTokenToDayKey(label);
         if (dk) next[dk] = { ...next[dk], closed: false };
     }
     return next;
@@ -100,16 +139,17 @@ export function normalizeOpeningHours(raw: unknown): OpeningHoursJson {
     const base: OpeningHoursJson = JSON.parse(JSON.stringify(DEFAULT_OPENING_HOURS));
     const obj = coerceOpeningHoursJsonObject(raw);
     if (!obj) return base;
-    for (const key of DAY_KEYS) {
-        const cell = obj[key];
-        if (cell && typeof cell === 'object') {
-            const c = cell as Partial<DaySchedule>;
-            base[key] = {
-                closed: typeof c.closed === 'boolean' ? c.closed : base[key].closed,
-                open: typeof c.open === 'string' ? c.open : base[key].open,
-                close: typeof c.close === 'string' ? c.close : base[key].close,
-            };
-        }
+
+    for (const [rawKey, val] of Object.entries(obj)) {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) continue;
+        const dk = resolveJsonCellDayKey(rawKey);
+        if (!dk) continue;
+        const c = val as Partial<DaySchedule>;
+        base[dk] = {
+            closed: coerceDayClosed(c.closed, base[dk].closed),
+            open: typeof c.open === 'string' ? c.open : base[dk].open,
+            close: typeof c.close === 'string' ? c.close : base[dk].close,
+        };
     }
     return base;
 }
