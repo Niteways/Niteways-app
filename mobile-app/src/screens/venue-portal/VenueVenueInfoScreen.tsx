@@ -86,6 +86,13 @@ const EMPTY_DRAFT: Draft = {
     longitude: null,
 };
 
+/** Deep snapshot so `draft` and `original` never share references — shared refs made JSON.stringify-based dirty checks stay false. */
+function duplicateVenueDraft(source: Draft): Draft {
+    const next = JSON.parse(JSON.stringify(source)) as Draft;
+    next.opening_hours_json = normalizeOpeningHours(next.opening_hours_json);
+    return next;
+}
+
 type Props = {
     onBack: () => void;
 };
@@ -145,15 +152,17 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                     spotify_link: profile.spotify_link,
                     menu_url: profile.menu_url,
                     google_maps_url: profile.google_maps_url,
-                    gallery_images: profile.gallery_images,
+                    gallery_images: [...profile.gallery_images],
                     opening_hours_json: profile.opening_hours_json,
                     latitude: profile.latitude,
                     longitude: profile.longitude,
                 };
-                setDraft(asDraft);
-                setOriginal(asDraft);
+                const baseline = duplicateVenueDraft(asDraft);
+                const editable = duplicateVenueDraft(asDraft);
+                setDraft(editable);
+                setOriginal(baseline);
                 setRemoteStale(false);
-                return asDraft;
+                return editable;
             }
             return null;
         } finally {
@@ -606,7 +615,7 @@ function BasicInfoSection({
         if (uploading) return;
 
         launchImageLibrary(
-            { mediaType: 'photo', quality: 0.85, selectionLimit: 1 },
+            { mediaType: 'photo', quality: 1, selectionLimit: 1 },
             async (res) => {
                 if (res.didCancel) return;
                 if (res.errorCode) {
