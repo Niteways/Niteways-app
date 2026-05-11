@@ -27,8 +27,6 @@ import {
     DAY_KEYS,
     DAY_LABELS,
     fetchVenueProfile,
-    canonicalOpeningHoursFingerprint,
-    materializeOpeningHoursJsonForPersist,
     normalizeOpeningHours,
     removeVenueMenuPdf,
     removeVenuePhoto,
@@ -219,10 +217,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         }
         setSaving(true);
         try {
-            const wantFp = canonicalOpeningHoursFingerprint(
-                materializeOpeningHoursJsonForPersist(draft.opening_hours_json),
-            );
-            const res = await updateVenueProfile(venueId, {
+            const resCore = await updateVenueProfile(venueId, {
                 name: draft.name,
                 category: draft.category,
                 description: draft.description,
@@ -238,28 +233,26 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 spotify_link: draft.spotify_link,
                 menu_url: draft.menu_url,
                 google_maps_url: draft.google_maps_url,
-                opening_hours_json: draft.opening_hours_json,
             });
-            if (!res.ok) {
-                Alert.alert('Could not save', res.error || 'Please try again.');
+            if (!resCore.ok) {
+                Alert.alert('Could not save', resCore.error || 'Please try again.');
                 return;
             }
-            const applied = await load({ silent: true });
-            const hoursSkipped = res.missingColumns?.includes('opening_hours_json');
-            if (applied && !hoursSkipped) {
-                const gotFp = canonicalOpeningHoursFingerprint(applied.opening_hours_json);
-                if (wantFp !== gotFp) {
-                    console.warn('[VenueVenueInfoScreen] opening_hours round-trip mismatch', {
-                        wantFp,
-                        gotFp,
-                        returnedFromUpdate: res.returnedOpeningHoursJson,
-                    });
-                }
+            const resHours = await updateVenueProfile(venueId, {
+                opening_hours_json: draft.opening_hours_json,
+            });
+            if (!resHours.ok) {
+                Alert.alert('Could not save opening hours', resHours.error || 'Please try again.');
+                return;
             }
-            if (res.missingColumns && res.missingColumns.length) {
+            await load({ silent: true });
+            const missingMerged = [
+                ...new Set([...(resCore.missingColumns ?? []), ...(resHours.missingColumns ?? [])]),
+            ];
+            if (missingMerged.length) {
                 Alert.alert(
                     'Partially saved',
-                    `Saved, but these columns are missing from your venues table: ${res.missingColumns.join(
+                    `Saved, but these columns are missing from your venues table: ${missingMerged.join(
                         ', '
                     )}. Run the latest migration to enable them.`
                 );

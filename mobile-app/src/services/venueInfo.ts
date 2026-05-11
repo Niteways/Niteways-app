@@ -352,7 +352,7 @@ export async function updateVenueProfile(
     if (patch.gallery_images !== undefined) payload.gallery_images = patch.gallery_images;
     if (patch.opening_hours_json !== undefined) {
         const hours = materializeOpeningHoursJsonForPersist(patch.opening_hours_json);
-        payload.opening_hours_json = hours;
+        payload.opening_hours_json = JSON.parse(JSON.stringify(hours));
         payload.opening_days = openingHoursJsonToOpeningDaysCsv(hours);
     }
     if (patch.latitude !== undefined) payload.latitude = patch.latitude;
