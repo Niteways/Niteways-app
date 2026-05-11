@@ -107,105 +107,137 @@ const VenueInformation = () => {
     setIsLoading(true);
   }, [activeVenueId]);
 
-  // Fetch venue data from Supabase on mount
+  // Fetch venue data from Supabase on mount + keep in sync when the venue app saves (realtime + tab refresh).
   useEffect(() => {
     if (!activeVenueId) return;
+    let cancelled = false;
 
-    const fetchVenue = async () => {
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from("venues")
-        .select("*")
-        .eq("id", activeVenueId)
-        .maybeSingle();
+    const fetchVenue = async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent === true;
+      if (!silent) setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from("venues")
+          .select("*")
+          .eq("id", activeVenueId)
+          .maybeSingle();
 
-      if (error) {
-        console.error("Error fetching venue:", error);
-        setIsLoading(false);
-        return;
-      }
+        if (cancelled) return;
 
-      if (data) {
-        const row = data as Record<string, unknown>;
-        const json = normalizeOpeningHours(row.opening_hours_json);
-        let parsedHours: Record<string, DaySpecificHours> = jsonToUiOpeningHours(json);
+        if (error) {
+          console.error("Error fetching venue:", error);
+          return;
+        }
 
-        const fromDbDays = data.opening_days
-          ? String(data.opening_days)
-              .split(", ")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [];
-        let openingDaysList =
-          fromDbDays.length > 0 ? fromDbDays : deriveOpeningDayLabelsFromJson(json);
+        if (data) {
+          const row = data as Record<string, unknown>;
+          const json = normalizeOpeningHours(row.opening_hours_json);
+          let parsedHours: Record<string, DaySpecificHours> = jsonToUiOpeningHours(json);
 
-        const hasJson =
-          row.opening_hours_json != null && typeof row.opening_hours_json === "object";
-        if (!hasJson && data.opening_hours) {
-          try {
-            const legacy = JSON.parse(data.opening_hours) as Record<string, DaySpecificHours>;
-            if (legacy && typeof legacy === "object") {
-              parsedHours = { ...parsedHours, ...legacy };
+          const fromDbDays = data.opening_days
+            ? String(data.opening_days)
+                .split(", ")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [];
+          let openingDaysList =
+            fromDbDays.length > 0 ? fromDbDays : deriveOpeningDayLabelsFromJson(json);
+
+          const hasJson =
+            row.opening_hours_json != null && typeof row.opening_hours_json === "object";
+          if (!hasJson && data.opening_hours) {
+            try {
+              const legacy = JSON.parse(data.opening_hours) as Record<string, DaySpecificHours>;
+              if (legacy && typeof legacy === "object") {
+                parsedHours = { ...parsedHours, ...legacy };
+              }
+            } catch {
+              /* ignore */
             }
-          } catch {
-            /* ignore */
           }
+
+          // Parse age requirements JSON
+          let ageReqs: AgeRequirements = {};
+          if (data.age_requirements) {
+            ageReqs = data.age_requirements as AgeRequirements;
+          }
+
+          const defaultAge =
+            typeof row.default_age_limit === "number" && Number.isFinite(row.default_age_limit)
+              ? Math.max(0, Math.round(row.default_age_limit))
+              : typeof data.age_limit === "number" && Number.isFinite(data.age_limit)
+                ? Math.max(0, Math.round(data.age_limit))
+                : 21;
+
+          // Directly set venue data from database - don't fall back to previous values
+          setVenueData({
+            name: data.name || "",
+            description: data.description || "",
+            musicGenres: data.music_genre ? data.music_genre.split(", ").filter(Boolean) : [],
+            openingHours: parsedHours,
+            openingDays: openingDaysList,
+            entranceRules: data.entrance_rules || "",
+            location: {
+              address: data.address || "",
+              googleMapsUrl: data.address ? `https://maps.google.com/?q=${encodeURIComponent(data.address)}` : "",
+            },
+            spotifyPlaylist: data.spotify_link || "",
+            instagram: data.instagram_handle || "",
+            menuPdf: null,
+            ageLimit: defaultAge,
+            ageRequirements: ageReqs,
+            dressCode: (data as { dress_code?: string }).dress_code || "",
+            galleryImages: data.gallery_images || [],
+          });
         }
-
-        // Parse age requirements JSON
-        let ageReqs: AgeRequirements = {};
-        if (data.age_requirements) {
-          ageReqs = data.age_requirements as AgeRequirements;
-        }
-
-        const defaultAge =
-          typeof row.default_age_limit === "number" && Number.isFinite(row.default_age_limit)
-            ? Math.max(0, Math.round(row.default_age_limit))
-            : typeof data.age_limit === "number" && Number.isFinite(data.age_limit)
-              ? Math.max(0, Math.round(data.age_limit))
-              : 21;
-
-        // Directly set venue data from database - don't fall back to previous values
-        setVenueData({
-          name: data.name || "",
-          description: data.description || "",
-          musicGenres: data.music_genre ? data.music_genre.split(", ").filter(Boolean) : [],
-          openingHours: parsedHours,
-          openingDays: openingDaysList,
-          entranceRules: data.entrance_rules || "",
-          location: {
-            address: data.address || "",
-            googleMapsUrl: data.address ? `https://maps.google.com/?q=${encodeURIComponent(data.address)}` : "",
-          },
-          spotifyPlaylist: data.spotify_link || "",
-          instagram: data.instagram_handle || "",
-          menuPdf: null,
-          ageLimit: defaultAge,
-          ageRequirements: ageReqs,
-          dressCode: (data as { dress_code?: string }).dress_code || "",
-          galleryImages: data.gallery_images || [],
-        });
+      } finally {
+        if (!silent && !cancelled) setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
-    fetchVenue();
+    void fetchVenue();
 
-    // Set up real-time subscription
     const channel = supabase
       .channel(`venue-info-updates-${activeVenueId}`)
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "venues",
-        filter: `id=eq.${activeVenueId}`,
-      }, () => {
-        void fetchVenue();
-      })
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "venues",
+          filter: `id=eq.${activeVenueId}`,
+        },
+        () => {
+          if (cancelled) return;
+          void fetchVenue({ silent: true });
+        },
+      )
       .subscribe();
 
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      void fetchVenue({ silent: true });
+    };
+
+    const onFocus = () => {
+      if (cancelled) return;
+      void fetchVenue({ silent: true });
+    };
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      void fetchVenue({ silent: true });
+    }, 45_000);
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      window.clearInterval(poll);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      void supabase.removeChannel(channel);
     };
   }, [activeVenueId]);
 

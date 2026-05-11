@@ -204,11 +204,19 @@ const Settings = () => {
       void fetchVenueRow(id, { silent: true });
     };
 
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      const id = activeVenueIdRef.current;
+      if (!id) return;
+      void fetchVenueRow(id, { silent: true });
+    }, 45_000);
+
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", refreshIfVisible);
 
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", refreshIfVisible);
       void supabase.removeChannel(channel);
