@@ -44,8 +44,11 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useResolvedPortalVenueId } from "@/hooks/useResolvedPortalVenueId";
 import {
+  DAY_KEYS,
+  DAY_KEY_LABELS,
   DEFAULT_OPENING_HOURS,
   normalizeOpeningHours,
+  type DayKey,
   type OpeningHoursJson,
 } from "@/lib/venueOpeningHours";
 
@@ -287,7 +290,7 @@ const Settings = () => {
     minSpendVip,
   ]);
 
-  const setDayHours = useCallback((day: "thu" | "fri" | "sat", patch: Partial<OpeningHoursJson["fri"]>) => {
+  const setDaySchedule = useCallback((day: DayKey, patch: Partial<OpeningHoursJson[DayKey]>) => {
     setOpeningHours((prev) => ({
       ...prev,
       [day]: { ...prev[day], ...patch },
@@ -779,61 +782,62 @@ const Settings = () => {
                 <CardHeader>
                   <CardTitle>Operating Hours</CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    Thursday-Saturday match the venue app (<code className="text-xs">opening_hours_json</code>).
-                    Times use 24-hour format for editing; the app may show 12-hour labels.
+                    Same weekly schedule as the venue app, stored in{" "}
+                    <code className="text-xs">opening_hours_json</code>. Time inputs use 24-hour values; the app may
+                    show 12-hour labels.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {venueLoading || !activeVenueId ? null : (
-                    <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                      <div className="space-y-2">
-                        <Label>Thursday Open</Label>
-                        <Input
-                          type="time"
-                          value={openingHours.thu.open}
-                          onChange={(e) => setDayHours("thu", { open: e.target.value, closed: false })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Thursday Close</Label>
-                        <Input
-                          type="time"
-                          value={openingHours.thu.close}
-                          onChange={(e) => setDayHours("thu", { close: e.target.value, closed: false })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Friday Open</Label>
-                        <Input
-                          type="time"
-                          value={openingHours.fri.open}
-                          onChange={(e) => setDayHours("fri", { open: e.target.value, closed: false })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Friday Close</Label>
-                        <Input
-                          type="time"
-                          value={openingHours.fri.close}
-                          onChange={(e) => setDayHours("fri", { close: e.target.value, closed: false })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Saturday Open</Label>
-                        <Input
-                          type="time"
-                          value={openingHours.sat.open}
-                          onChange={(e) => setDayHours("sat", { open: e.target.value, closed: false })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Saturday Close</Label>
-                        <Input
-                          type="time"
-                          value={openingHours.sat.close}
-                          onChange={(e) => setDayHours("sat", { close: e.target.value, closed: false })}
-                        />
-                      </div>
+                    <div className="space-y-4">
+                      {DAY_KEYS.map((dayKey) => {
+                        const row = openingHours[dayKey];
+                        const open = row.closed ? false : true;
+                        return (
+                          <div
+                            key={dayKey}
+                            className="flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0 last:pb-0 sm:flex-row sm:items-end sm:gap-4"
+                          >
+                            <div className="sm:w-36 shrink-0">
+                              <p className="text-sm font-medium">{DAY_KEY_LABELS[dayKey]}</p>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Switch
+                                  id={`hours-open-${dayKey}`}
+                                  checked={open}
+                                  onCheckedChange={(checked) => setDaySchedule(dayKey, { closed: !checked })}
+                                />
+                                <Label htmlFor={`hours-open-${dayKey}`} className="text-muted-foreground font-normal">
+                                  {open ? "Open" : "Closed"}
+                                </Label>
+                              </div>
+                            </div>
+                            {open ? (
+                              <div className="grid flex-1 grid-cols-2 gap-3 sm:max-w-md">
+                                <div className="space-y-2">
+                                  <Label>Open</Label>
+                                  <Input
+                                    type="time"
+                                    value={row.open}
+                                    onChange={(e) =>
+                                      setDaySchedule(dayKey, { open: e.target.value, closed: false })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Close</Label>
+                                  <Input
+                                    type="time"
+                                    value={row.close}
+                                    onChange={(e) =>
+                                      setDaySchedule(dayKey, { close: e.target.value, closed: false })
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
