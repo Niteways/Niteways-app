@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -15,6 +15,7 @@ import {
     Image,
     Linking,
     Dimensions,
+    AppState,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -29,6 +30,7 @@ import {
     normalizeOpeningHours,
     removeVenueMenuPdf,
     removeVenuePhoto,
+    subscribeVenueRowChanges,
     updateVenueProfile,
     uploadVenueMenuPdf,
     uploadVenuePhoto,
@@ -103,6 +105,10 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         links: false,
     });
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [remoteStale, setRemoteStale] = useState(false);
+    const dirtyRef = useRef(false);
+    const savingRef = useRef(false);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const setField = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => {
         setDraft((d) => ({ ...d, [key]: value }));
@@ -146,6 +152,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 };
                 setDraft(asDraft);
                 setOriginal(asDraft);
+                setRemoteStale(false);
             }
         } finally {
             setLoading(false);
@@ -157,6 +164,44 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
     }, [load]);
 
     const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(original), [draft, original]);
+
+    useEffect(() => {
+        dirtyRef.current = dirty;
+    }, [dirty]);
+
+    useEffect(() => {
+        savingRef.current = saving;
+    }, [saving]);
+
+    useEffect(() => {
+        if (!venueId) return;
+        const bump = () => {
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = setTimeout(() => {
+                debounceTimerRef.current = null;
+                if (savingRef.current) return;
+                if (!dirtyRef.current) {
+                    void load();
+                } else {
+                    setRemoteStale(true);
+                }
+            }, 250);
+        };
+        const { unsubscribe } = subscribeVenueRowChanges(venueId, bump);
+        return () => {
+            unsubscribe();
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        };
+    }, [venueId, load]);
+
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (next) => {
+            if (next === 'active' && venueId && !dirtyRef.current && !savingRef.current) {
+                void load();
+            }
+        });
+        return () => sub.remove();
+    }, [venueId, load]);
 
     const onSave = useCallback(async () => {
         if (!venueId) {
@@ -203,6 +248,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 Alert.alert('Saved', 'Venue info updated.');
             }
             setOriginal(draft);
+            setRemoteStale(false);
         } finally {
             setSaving(false);
         }
@@ -275,6 +321,34 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 <View style={styles.topBarSpacer} />
             </View>
 
+            {remoteStale ? (
+                <View style={styles.remoteStaleBanner}>
+                    <Text style={styles.remoteStaleText}>
+                        This venue was updated on the web portal (or elsewhere). Reload to see the latest, or keep
+                        editing and save your version.
+                    </Text>
+                    <View style={styles.remoteStaleActions}>
+                        <TouchableOpacity
+                            style={styles.remoteStaleBtn}
+                            onPress={() => {
+                                setRemoteStale(false);
+                                void load();
+                            }}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={styles.remoteStaleBtnText}>Reload</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.remoteStaleBtnOutline}
+                            onPress={() => setRemoteStale(false)}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={styles.remoteStaleBtnOutlineText}>Dismiss</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            ) : null}
+
             <ScrollView
                 style={styles.body}
                 contentContainerStyle={styles.bodyContent}
@@ -293,7 +367,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 <AccordionSection
                     icon="business-outline"
                     title="Basic Information"
-                    subtitle="Venue name & photos"
+                    subtitle="Venue name, contact & photos"
                     expanded={expanded.basic}
                     onToggle={() => toggleSection('basic')}
                 >
@@ -303,6 +377,10 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                         onName={(v) => setField('name', v)}
                         description={draft.description}
                         onDescription={(v) => setField('description', v)}
+                        email={draft.email}
+                        onEmail={(v) => setField('email', v)}
+                        phone={draft.phone}
+                        onPhone={(v) => setField('phone', v)}
                         gallery={draft.gallery_images}
                         onPersistGallery={persistGallery}
                     />
@@ -402,7 +480,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                         <Icon name="save-outline" size={20} color="#111" style={styles.saveBtnIcon} />
                     )}
                     <Text style={styles.saveBtnText}>
-                        {saving ? 'Savingâ€¦' : dirty ? 'Save Changes' : 'No changes to save'}
+                        {saving ? 'Saving…' : dirty ? 'Save Changes' : 'No changes to save'}
                     </Text>
                 </TouchableOpacity>
 
@@ -483,6 +561,10 @@ function BasicInfoSection({
     onName,
     description,
     onDescription,
+    email,
+    onEmail,
+    phone,
+    onPhone,
     gallery,
     onPersistGallery,
 }: {
@@ -491,6 +573,10 @@ function BasicInfoSection({
     onName: (v: string) => void;
     description: string;
     onDescription: (v: string) => void;
+    email: string;
+    onEmail: (v: string) => void;
+    phone: string;
+    onPhone: (v: string) => void;
     gallery: string[];
     onPersistGallery: (next: string[]) => Promise<boolean>;
 }) {
@@ -577,10 +663,34 @@ function BasicInfoSection({
                     style={[styles.input, styles.inputMultiline]}
                     value={description}
                     onChangeText={onDescription}
-                    placeholder="Tell guests what makes your venue specialâ€¦"
+                    placeholder={'Tell guests what makes your venue special…'}
                     placeholderTextColor="rgba(156,163,175,0.55)"
                     multiline
                     textAlignVertical="top"
+                />
+            </Labeled>
+
+            <Labeled label="Contact email">
+                <TextInput
+                    style={styles.input}
+                    value={email}
+                    onChangeText={onEmail}
+                    placeholder="info@yourvenue.com"
+                    placeholderTextColor="rgba(156,163,175,0.55)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                />
+            </Labeled>
+
+            <Labeled label="Phone">
+                <TextInput
+                    style={styles.input}
+                    value={phone}
+                    onChangeText={onPhone}
+                    placeholder="+46 …"
+                    placeholderTextColor="rgba(156,163,175,0.55)"
+                    keyboardType="phone-pad"
                 />
             </Labeled>
 
@@ -1474,6 +1584,40 @@ const styles = StyleSheet.create({
     },
     backWrap: { width: 40, justifyContent: 'center' },
     topBarSpacer: { width: 40 },
+    remoteStaleBanner: {
+        marginHorizontal: 16,
+        marginTop: 10,
+        marginBottom: 4,
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: GOLD_SOFT,
+        borderWidth: 1,
+        borderColor: GOLD,
+    },
+    remoteStaleText: {
+        color: VP.text,
+        fontSize: 12,
+        lineHeight: 17,
+        marginBottom: 10,
+    },
+    remoteStaleActions: { flexDirection: 'row', gap: 10 },
+    remoteStaleBtn: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: GOLD,
+        alignItems: 'center',
+    },
+    remoteStaleBtnText: { color: '#111', fontSize: 13, fontWeight: '800' },
+    remoteStaleBtnOutline: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.25)',
+        alignItems: 'center',
+    },
+    remoteStaleBtnOutlineText: { color: VP.text, fontSize: 13, fontWeight: '700' },
     topTitles: { flex: 1, minWidth: 0, paddingRight: 4 },
     pageTitle: { color: VP.text, fontSize: 22, fontWeight: '800' },
     pageSub: { color: VP.muted, fontSize: 13, marginTop: 2, lineHeight: 18 },

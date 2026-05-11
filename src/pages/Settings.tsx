@@ -234,6 +234,7 @@ const Settings = () => {
         address: venueAddress.trim() || null,
         opening_hours_json: openingHours,
         default_age_limit,
+        ...(default_age_limit !== null ? { age_limit: default_age_limit } : {}),
         booking_cutoff_hours: parseNum(cutoffHours),
         max_advance_days: parseNum(maxAdvanceDays),
         cancellation_policy: cancellationPolicy.trim() || null,

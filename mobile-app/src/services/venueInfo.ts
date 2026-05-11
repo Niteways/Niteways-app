@@ -228,7 +228,10 @@ export async function updateVenueProfile(
     if (patch.phone !== undefined) payload.phone = trimOrNull(patch.phone);
     if (patch.music_genre !== undefined) payload.music_genre = trimOrNull(patch.music_genre);
     if (patch.entrance_rules !== undefined) payload.entrance_rules = trimOrNull(patch.entrance_rules);
-    if (patch.default_age_limit !== undefined) payload.default_age_limit = patch.default_age_limit;
+    if (patch.default_age_limit !== undefined) {
+        payload.default_age_limit = patch.default_age_limit;
+        payload.age_limit = patch.default_age_limit;
+    }
     if (patch.day_specific_ages !== undefined) payload.day_specific_ages = patch.day_specific_ages;
     if (patch.dress_code !== undefined) payload.dress_code = trimOrNull(patch.dress_code);
     if (patch.instagram_handle !== undefined) payload.instagram_handle = trimOrNull(patch.instagram_handle);
@@ -268,6 +271,32 @@ export async function updateVenueProfile(
         return { ok: false, error: res.error.message, missingColumns: missing.length ? missing : undefined };
     }
     return { ok: true, missingColumns: missing.length ? missing : undefined };
+}
+
+/** Realtime: same `venues` row as the web portal — keeps Venue Info in sync when Settings saves. */
+export function subscribeVenueRowChanges(
+    venueId: string,
+    onRemoteChange: () => void
+): { unsubscribe: () => void } {
+    const channel = supabase
+        .channel(`venue-row-${venueId}`)
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'venues', filter: `id=eq.${venueId}` },
+            () => {
+                onRemoteChange();
+            }
+        )
+        .subscribe((status, err) => {
+            if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+                console.warn('[venueInfo] venues realtime', status, err?.message ?? err);
+            }
+        });
+    return {
+        unsubscribe: () => {
+            void supabase.removeChannel(channel);
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------
