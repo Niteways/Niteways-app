@@ -84,6 +84,7 @@ import AdminAgreements from "./pages/admin/AdminAgreements";
 import WriteReport from "./pages/WriteReport";
 import ProfileSettings from "./pages/ProfileSettings";
 import VenueLogin from "./pages/VenueLogin";
+import AuthCallback from "./pages/AuthCallback";
 import { VenuePortalGate } from "@/components/auth/VenuePortalGate";
 
 const queryClient = new QueryClient();
@@ -99,6 +100,7 @@ const App = () => (
           <ImpersonationProvider>
           <Routes>
             <Route path="/login" element={<VenueLogin />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route element={<VenuePortalGate />}>
             {/* Venue Portal Routes */}
             <Route path="/" element={<Dashboard />} />

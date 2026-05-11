@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { REQUIRE_VENUE_PORTAL_AUTH } from "@/config/deployMode";
+import { getPasswordRecoveryRedirectUrl } from "@/config/authRedirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,9 @@ export default function VenueLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<"login" | "forgot">("login");
+  const [resetSent, setResetSent] = useState(false);
+  const resetSuccess = searchParams.get("reset") === "success";
 
   useEffect(() => {
     if (!REQUIRE_VENUE_PORTAL_AUTH) {
@@ -49,6 +53,26 @@ export default function VenueLogin() {
     navigate(next.startsWith("/") ? next : "/", { replace: true });
   };
 
+  const onForgotSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Enter the email for your account.");
+      return;
+    }
+    setSubmitting(true);
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo: getPasswordRecoveryRedirectUrl(),
+    });
+    setSubmitting(false);
+    if (resetErr) {
+      setError(resetErr.message);
+      return;
+    }
+    setResetSent(true);
+  };
+
   if (!REQUIRE_VENUE_PORTAL_AUTH) {
     return null;
   }
@@ -60,7 +84,48 @@ export default function VenueLogin() {
           <CardTitle className="text-2xl font-semibold tracking-tight">Venue portal</CardTitle>
           <CardDescription>Sign in with your Supabase account (email and password).</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {resetSuccess && (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
+              Password updated. Sign in with your new password.
+            </p>
+          )}
+          {mode === "forgot" ? (
+            <form onSubmit={onForgotSubmit} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                We will email you a link to choose a new password. Add this site URL to Supabase Authentication → URL
+                configuration if the email does not arrive.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(ev) => setEmail(ev.target.value)}
+                  required
+                  className="bg-muted/40"
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              {resetSent && (
+                <p className="text-sm text-muted-foreground">
+                  If an account exists for that email, you will receive a reset link shortly. Check spam folders.
+                </p>
+              )}
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? "Sending…" : "Send reset link"}
+              </Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => {
+                setMode("login");
+                setError(null);
+                setResetSent(false);
+              }}>
+                Back to sign in
+              </Button>
+            </form>
+          ) : (
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="venue-login-email">Email</Label>
@@ -75,7 +140,20 @@ export default function VenueLogin() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="venue-login-password">Password</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="venue-login-password">Password</Label>
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => {
+                    setMode("forgot");
+                    setError(null);
+                    setResetSent(false);
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </div>
               <Input
                 id="venue-login-password"
                 type="password"
@@ -91,6 +169,7 @@ export default function VenueLogin() {
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
+          )}
         </CardContent>
       </Card>
     </div>
