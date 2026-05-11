@@ -48,11 +48,60 @@ export const DEFAULT_OPENING_HOURS: OpeningHoursJson = {
     sun: { closed: true, open: '21:00', close: '03:00' },
 };
 
+function coerceOpeningHoursJsonObject(raw: unknown): Record<string, unknown> | null {
+    if (raw == null) return null;
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+    if (typeof raw === 'string') {
+        try {
+            const p = JSON.parse(raw) as unknown;
+            if (p && typeof p === 'object' && !Array.isArray(p)) return p as Record<string, unknown>;
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+const OPENING_DAY_LABEL_TO_KEY: Record<string, DayKey> = {
+    monday: 'mon',
+    tuesday: 'tue',
+    wednesday: 'wed',
+    thursday: 'thu',
+    friday: 'fri',
+    saturday: 'sat',
+    sunday: 'sun',
+};
+
+/** Align with web `mergeOpeningDaysCsvIntoJson` — opening_days can list days open when JSON.closed drifted. */
+function mergeOpeningDaysCsvIntoJson(json: OpeningHoursJson, openingDaysCsv: unknown): OpeningHoursJson {
+    if (typeof openingDaysCsv !== 'string') return json;
+    const parts = openingDaysCsv
+        .split(/,\s*/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    if (parts.length === 0) return json;
+    const next: OpeningHoursJson = JSON.parse(JSON.stringify(json));
+    for (const label of parts) {
+        const dk = OPENING_DAY_LABEL_TO_KEY[label.toLowerCase()];
+        if (dk) next[dk] = { ...next[dk], closed: false };
+    }
+    return next;
+}
+
+function openingHoursJsonToOpeningDaysCsv(json: OpeningHoursJson): string {
+    const labels: string[] = [];
+    for (const k of DAY_KEYS) {
+        if (!json[k].closed) labels.push(DAY_LABELS[k]);
+    }
+    return labels.join(', ');
+}
+
 export function normalizeOpeningHours(raw: unknown): OpeningHoursJson {
     const base: OpeningHoursJson = JSON.parse(JSON.stringify(DEFAULT_OPENING_HOURS));
-    if (!raw || typeof raw !== 'object') return base;
+    const obj = coerceOpeningHoursJsonObject(raw);
+    if (!obj) return base;
     for (const key of DAY_KEYS) {
-        const cell = (raw as Record<string, unknown>)[key];
+        const cell = obj[key];
         if (cell && typeof cell === 'object') {
             const c = cell as Partial<DaySchedule>;
             base[key] = {
@@ -157,14 +206,17 @@ function buildProfile(
         gallery_images: Array.isArray(row.gallery_images)
             ? (row.gallery_images as unknown[]).filter((x): x is string => typeof x === 'string')
             : [],
-        opening_hours_json: normalizeOpeningHours(row.opening_hours_json),
+        opening_hours_json: mergeOpeningDaysCsvIntoJson(
+            normalizeOpeningHours(row.opening_hours_json),
+            row.opening_days,
+        ),
         latitude: typeof row.latitude === 'number' ? row.latitude : null,
         longitude: typeof row.longitude === 'number' ? row.longitude : null,
     };
 }
 
 const FULL_COLS =
-    'id, name, category, description, address, city_id, email, phone, music_genre, entrance_rules, default_age_limit, day_specific_ages, dress_code, instagram_handle, spotify_link, menu_url, google_maps_url, gallery_images, opening_hours_json, latitude, longitude';
+    'id, name, category, description, address, city_id, email, phone, music_genre, entrance_rules, default_age_limit, day_specific_ages, dress_code, instagram_handle, spotify_link, menu_url, google_maps_url, gallery_images, opening_hours_json, opening_days, latitude, longitude';
 
 export async function fetchVenueProfile(venueId: string): Promise<VenueProfile | null> {
     const first = await supabase.from('venues').select(FULL_COLS).eq('id', venueId).maybeSingle();
@@ -239,7 +291,10 @@ export async function updateVenueProfile(
     if (patch.menu_url !== undefined) payload.menu_url = trimOrNull(patch.menu_url);
     if (patch.google_maps_url !== undefined) payload.google_maps_url = trimOrNull(patch.google_maps_url);
     if (patch.gallery_images !== undefined) payload.gallery_images = patch.gallery_images;
-    if (patch.opening_hours_json !== undefined) payload.opening_hours_json = patch.opening_hours_json;
+    if (patch.opening_hours_json !== undefined) {
+        payload.opening_hours_json = patch.opening_hours_json;
+        payload.opening_days = openingHoursJsonToOpeningDaysCsv(patch.opening_hours_json);
+    }
     if (patch.latitude !== undefined) payload.latitude = patch.latitude;
     if (patch.longitude !== undefined) payload.longitude = patch.longitude;
 

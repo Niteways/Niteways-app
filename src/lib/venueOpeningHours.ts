@@ -36,11 +36,26 @@ export const DEFAULT_OPENING_HOURS: OpeningHoursJson = {
   sun: { closed: true, open: "21:00", close: "03:00" },
 };
 
+function coerceOpeningHoursJsonObject(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      if (p && typeof p === "object" && !Array.isArray(p)) return p as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export function normalizeOpeningHours(raw: unknown): OpeningHoursJson {
   const base: OpeningHoursJson = JSON.parse(JSON.stringify(DEFAULT_OPENING_HOURS));
-  if (!raw || typeof raw !== "object") return base;
+  const obj = coerceOpeningHoursJsonObject(raw);
+  if (!obj) return base;
   for (const key of DAY_KEYS) {
-    const cell = (raw as Record<string, unknown>)[key];
+    const cell = obj[key];
     if (cell && typeof cell === "object") {
       const c = cell as Partial<DaySchedule>;
       base[key] = {
@@ -100,6 +115,33 @@ export function deriveOpeningDayLabelsFromJson(json: OpeningHoursJson): string[]
     const k = UI_DAY_TO_DAY_KEY[label.toLowerCase()];
     return k ? !json[k].closed : false;
   }) as string[];
+}
+
+/**
+ * When `venues.opening_days` is non-empty, VenueInformation treats it as which days are open.
+ * Older rows sometimes list a day in `opening_days` while `opening_hours_json` still has `closed: true`
+ * for that day — merge so Settings / native Venue Info match.
+ */
+export function mergeOpeningDaysCsvIntoJson(
+  json: OpeningHoursJson,
+  openingDaysCsv: unknown,
+): OpeningHoursJson {
+  if (typeof openingDaysCsv !== "string") return json;
+  const parts = openingDaysCsv
+    .split(/,\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return json;
+  const next: OpeningHoursJson = JSON.parse(JSON.stringify(json));
+  for (const label of parts) {
+    const dk = UI_DAY_TO_DAY_KEY[label.toLowerCase()];
+    if (dk) next[dk] = { ...next[dk], closed: false };
+  }
+  return next;
+}
+
+export function openingHoursJsonToOpeningDaysCsv(json: OpeningHoursJson): string {
+  return deriveOpeningDayLabelsFromJson(json).join(", ");
 }
 
 /** Build `opening_hours_json` from portal UI state (English labels + `openingHours` map). */

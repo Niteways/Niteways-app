@@ -47,7 +47,9 @@ import {
   DAY_KEYS,
   DAY_KEY_LABELS,
   DEFAULT_OPENING_HOURS,
+  mergeOpeningDaysCsvIntoJson,
   normalizeOpeningHours,
+  openingHoursJsonToOpeningDaysCsv,
   type DayKey,
   type OpeningHoursJson,
 } from "@/lib/venueOpeningHours";
@@ -131,7 +133,9 @@ const Settings = () => {
           ? String(Math.max(0, Math.round(row.age_limit)))
           : "";
     setDefaultAgeLimit(age);
-    setOpeningHours(normalizeOpeningHours(row.opening_hours_json));
+    setOpeningHours(
+      mergeOpeningDaysCsvIntoJson(normalizeOpeningHours(row.opening_hours_json), row.opening_days),
+    );
     setCutoffHours(unknownToInputNumber(row.booking_cutoff_hours));
     setMaxAdvanceDays(unknownToInputNumber(row.max_advance_days));
     setCancellationPolicy(typeof row.cancellation_policy === "string" ? row.cancellation_policy : "");
@@ -253,6 +257,7 @@ const Settings = () => {
         phone: venuePhone.trim() || null,
         address: venueAddress.trim() || null,
         opening_hours_json: openingHours,
+        opening_days: openingHoursJsonToOpeningDaysCsv(openingHours),
         default_age_limit,
         ...(default_age_limit !== null ? { age_limit: default_age_limit } : {}),
         booking_cutoff_hours: parseNum(cutoffHours),
