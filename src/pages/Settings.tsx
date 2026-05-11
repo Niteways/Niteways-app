@@ -177,8 +177,17 @@ const Settings = () => {
         },
       )
       .subscribe((status, err) => {
-        if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
-          console.warn("[Settings] venue realtime", status, err?.message ?? err);
+        if (status === "SUBSCRIBED") return;
+        const detail =
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : err && typeof err === "object" && "message" in err
+                ? String((err as { message?: string }).message)
+                : "";
+        if ((status === "TIMED_OUT" || status === "CHANNEL_ERROR") && detail) {
+          console.warn("[Settings] venue realtime", status, detail);
         }
       });
 

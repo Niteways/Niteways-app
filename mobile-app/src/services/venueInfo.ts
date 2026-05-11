@@ -288,8 +288,18 @@ export function subscribeVenueRowChanges(
             }
         )
         .subscribe((status, err) => {
-            if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-                console.warn('[venueInfo] venues realtime', status, err?.message ?? err);
+            if (status === 'SUBSCRIBED') return;
+            const detail =
+                err instanceof Error
+                    ? err.message
+                    : typeof err === 'string'
+                      ? err
+                      : err && typeof err === 'object' && 'message' in err
+                        ? String((err as { message?: string }).message)
+                        : '';
+            // CHANNEL_ERROR with no detail is common on reconnect / dev reload — not actionable.
+            if ((status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') && detail) {
+                console.warn('[venueInfo] venues realtime', status, detail);
             }
         });
     return {
