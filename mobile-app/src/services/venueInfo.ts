@@ -121,22 +121,6 @@ function resolveJsonCellDayKey(rawKey: string): DayKey | null {
     return openingDayTokenToDayKey(k);
 }
 
-/** Align with web `mergeOpeningDaysCsvIntoJson` — opening_days can list days open when JSON.closed drifted. */
-function mergeOpeningDaysCsvIntoJson(json: OpeningHoursJson, openingDaysCsv: unknown): OpeningHoursJson {
-    if (typeof openingDaysCsv !== 'string') return json;
-    const parts = openingDaysCsv
-        .split(/,\s*/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    if (parts.length === 0) return json;
-    const next: OpeningHoursJson = JSON.parse(JSON.stringify(json));
-    for (const label of parts) {
-        const dk = openingDayTokenToDayKey(label);
-        if (dk) next[dk] = { ...next[dk], closed: false };
-    }
-    return next;
-}
-
 function openingHoursJsonToOpeningDaysCsv(json: OpeningHoursJson): string {
     const labels: string[] = [];
     for (const k of DAY_KEYS) {
@@ -256,10 +240,7 @@ function buildProfile(
         gallery_images: Array.isArray(row.gallery_images)
             ? (row.gallery_images as unknown[]).filter((x): x is string => typeof x === 'string')
             : [],
-        opening_hours_json: mergeOpeningDaysCsvIntoJson(
-            normalizeOpeningHours(row.opening_hours_json),
-            row.opening_days,
-        ),
+        opening_hours_json: normalizeOpeningHours(row.opening_hours_json),
         latitude: typeof row.latitude === 'number' ? row.latitude : null,
         longitude: typeof row.longitude === 'number' ? row.longitude : null,
     };

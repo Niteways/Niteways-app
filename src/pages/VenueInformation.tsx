@@ -48,7 +48,6 @@ import { AppPreview } from "@/components/venue/AppPreview";
 import {
   deriveOpeningDayLabelsFromJson,
   jsonToUiOpeningHours,
-  mergeOpeningDaysCsvIntoJson,
   normalizeOpeningHours,
   uiOpeningStateToJson,
 } from "@/lib/venueOpeningHours";
@@ -132,10 +131,7 @@ const VenueInformation = () => {
 
         if (data) {
           const row = data as Record<string, unknown>;
-          const json = mergeOpeningDaysCsvIntoJson(
-            normalizeOpeningHours(row.opening_hours_json),
-            row.opening_days,
-          );
+          const json = normalizeOpeningHours(row.opening_hours_json);
           let parsedHours: Record<string, DaySpecificHours> = jsonToUiOpeningHours(json);
 
           const fromDbDays = data.opening_days
@@ -144,8 +140,11 @@ const VenueInformation = () => {
                 .map((s) => s.trim())
                 .filter(Boolean)
             : [];
-          let openingDaysList =
-            fromDbDays.length > 0 ? fromDbDays : deriveOpeningDayLabelsFromJson(json);
+          /** Prefer `opening_hours_json`; legacy rows may only have `opening_days`. */
+          let openingDaysList = deriveOpeningDayLabelsFromJson(json);
+          if (openingDaysList.length === 0 && fromDbDays.length > 0) {
+            openingDaysList = fromDbDays;
+          }
 
           const hasJson =
             row.opening_hours_json != null &&

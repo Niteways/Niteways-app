@@ -158,9 +158,9 @@ export function normalizeOpeningHours(raw: unknown): OpeningHoursJson {
 }
 
 /**
- * When `venues.opening_days` is non-empty, VenueInformation treats it as which days are open.
- * Older rows sometimes list a day in `opening_days` while `opening_hours_json` still has `closed: true`
- * for that day — merge so Settings / native Venue Info match.
+ * @deprecated Do not use on read paths — stale `opening_days` can contradict `opening_hours_json`
+ * and falsely flip days open. Prefer `normalizeOpeningHours(row.opening_hours_json)` only.
+ * Kept for rare one-off data migrations / scripts.
  */
 export function mergeOpeningDaysCsvIntoJson(
   json: OpeningHoursJson,

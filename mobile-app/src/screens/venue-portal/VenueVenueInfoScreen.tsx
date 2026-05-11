@@ -250,7 +250,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
             ) {
                 Alert.alert(
                     'Opening hours did not stick',
-                    'Supabase accepted the save, but the weekly hours loaded back from the server do not match. That usually means the database rejected or altered this field (Row Level Security), another session wrote older hours, or mobile and web point at different Supabase projects — not a simple offline/disconnect issue.',
+                    'The weekly schedule we loaded right after saving does not match what you tapped Save with. If this keeps appearing after updating the app, check Supabase RLS on `venues` or that mobile and web use the same project.',
                 );
                 return;
             }

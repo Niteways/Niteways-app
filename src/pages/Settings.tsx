@@ -47,7 +47,6 @@ import {
   DAY_KEYS,
   DAY_KEY_LABELS,
   DEFAULT_OPENING_HOURS,
-  mergeOpeningDaysCsvIntoJson,
   normalizeOpeningHours,
   openingHoursJsonToOpeningDaysCsv,
   type DayKey,
@@ -133,9 +132,7 @@ const Settings = () => {
           ? String(Math.max(0, Math.round(row.age_limit)))
           : "";
     setDefaultAgeLimit(age);
-    setOpeningHours(
-      mergeOpeningDaysCsvIntoJson(normalizeOpeningHours(row.opening_hours_json), row.opening_days),
-    );
+    setOpeningHours(normalizeOpeningHours(row.opening_hours_json));
     setCutoffHours(unknownToInputNumber(row.booking_cutoff_hours));
     setMaxAdvanceDays(unknownToInputNumber(row.max_advance_days));
     setCancellationPolicy(typeof row.cancellation_policy === "string" ? row.cancellation_policy : "");
