@@ -33,6 +33,7 @@ ALTER TABLE public.venues
     ADD COLUMN IF NOT EXISTS opening_hours        TEXT,
     ADD COLUMN IF NOT EXISTS opening_days         TEXT,
     ADD COLUMN IF NOT EXISTS entrance_rules       TEXT,
+    ADD COLUMN IF NOT EXISTS age_limit           INTEGER DEFAULT 21,
     ADD COLUMN IF NOT EXISTS default_age_limit    INTEGER,
     ADD COLUMN IF NOT EXISTS day_specific_ages    JSONB,
     ADD COLUMN IF NOT EXISTS dress_code           TEXT,
