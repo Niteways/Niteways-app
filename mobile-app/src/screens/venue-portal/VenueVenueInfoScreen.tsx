@@ -16,6 +16,7 @@ import {
     Linking,
     Dimensions,
     AppState,
+    Pressable,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -906,8 +907,6 @@ function formatTimeDisplay(value: string): string {
 // Entrance Rules section
 // ============================================================================
 
-const RULES_PINK = '#F87A8F';
-
 function parseAgeInput(v: string): number | null {
     if (!v.trim()) return null;
     const n = Number(v);
@@ -937,6 +936,7 @@ function EntranceRulesSection({
     openingHours: OpeningHoursJson;
 }) {
     const openDays = DAY_KEYS.filter((k) => !openingHours[k].closed);
+    const fallbackAge = defaultAge ?? 21;
 
     const setDayAge = (k: DayKey, raw: string) => {
         const parsed = parseAgeInput(raw);
@@ -950,70 +950,109 @@ function EntranceRulesSection({
     };
 
     return (
-        <>
-            <LabelWithIcon icon="shield-outline" label="Default Age Limit" />
-            <TextInput
-                style={[styles.input, styles.ageInputStandalone]}
-                value={defaultAge != null ? String(defaultAge) : ''}
-                onChangeText={(v) => onDefaultAge(parseAgeInput(v))}
-                placeholder="21"
-                placeholderTextColor="rgba(156,163,175,0.55)"
-                keyboardType="number-pad"
-                maxLength={2}
-            />
-
-            <Text style={[styles.ruleSubLabel, { marginTop: 18 }]}>Day-Specific Ages</Text>
-            {openDays.length === 0 ? (
-                <Text style={styles.closedAllText}>
-                    No open days yet. Pick days in Opening Hours first.
+        <View style={styles.rulesSection}>
+            <View style={styles.rulesCard}>
+                <LabelWithIcon icon="shield-outline" label="Default age limit" />
+                <Text style={styles.rulesHint}>
+                    Applies every open night unless you override a specific day below.
                 </Text>
-            ) : (
-                <View style={{ gap: 10 }}>
-                    {openDays.map((k) => {
-                        const v = dayAges[k];
-                        return (
-                            <View key={k} style={styles.ageDayRow}>
-                                <Text style={styles.ageDayLabel}>{DAY_SHORT[k]}</Text>
-                                <TextInput
-                                    style={styles.ageDayInput}
-                                    value={v != null ? String(v) : ''}
-                                    onChangeText={(t) => setDayAge(k, t)}
-                                    placeholder="â€“"
-                                    placeholderTextColor="rgba(156,163,175,0.55)"
-                                    keyboardType="number-pad"
-                                    maxLength={2}
-                                />
-                                <Text style={styles.agePlus}>+</Text>
-                            </View>
-                        );
-                    })}
+                <View style={styles.rulesDefaultRow}>
+                    <TextInput
+                        style={[styles.input, styles.rulesDefaultInput]}
+                        value={defaultAge != null ? String(defaultAge) : ''}
+                        onChangeText={(v) => onDefaultAge(parseAgeInput(v))}
+                        placeholder={String(fallbackAge)}
+                        placeholderTextColor="rgba(156,163,175,0.45)"
+                        keyboardType="number-pad"
+                        maxLength={2}
+                    />
+                    <Text style={styles.rulesUnit}>years minimum</Text>
                 </View>
-            )}
+            </View>
 
-            <View style={{ marginTop: 18 }}>
-                <LabelWithIcon icon="shirt-outline" label="Dress Code" />
+            <View style={styles.rulesCard}>
+                <Text style={styles.rulesCardTitle}>Day-specific ages</Text>
+                <Text style={styles.rulesHint}>
+                    For nights your venue is open. Leave empty to use the default ({fallbackAge}). Tap the clear
+                    icon to remove a custom age for that day.
+                </Text>
+                {openDays.length === 0 ? (
+                    <Text style={styles.closedAllText}>
+                        No open days yet. Choose opening days in Opening Hours first.
+                    </Text>
+                ) : (
+                    <View style={styles.rulesDayList}>
+                        {openDays.map((k) => {
+                            const v = dayAges[k];
+                            const hasOverride = v != null;
+                            return (
+                                <View
+                                    key={k}
+                                    style={[styles.ageDayRow, hasOverride ? styles.ageDayRowActive : undefined]}
+                                >
+                                    <View style={styles.ageDayNameCol}>
+                                        <Text style={styles.ageDayShort}>{DAY_SHORT[k]}</Text>
+                                        <Text style={styles.ageDayFull} numberOfLines={1}>
+                                            {DAY_LABELS[k]}
+                                        </Text>
+                                    </View>
+                                    <TextInput
+                                        style={styles.ageDayInputFlex}
+                                        value={hasOverride ? String(v) : ''}
+                                        onChangeText={(t) => setDayAge(k, t)}
+                                        placeholder={String(fallbackAge)}
+                                        placeholderTextColor="rgba(156,163,175,0.4)"
+                                        keyboardType="number-pad"
+                                        maxLength={2}
+                                    />
+                                    <Text style={styles.ageSuffix}>yrs</Text>
+                                    {hasOverride ? (
+                                        <Pressable
+                                            onPress={() => setDayAge(k, '')}
+                                            hitSlop={10}
+                                            accessibilityRole="button"
+                                            accessibilityLabel={`Clear age override for ${DAY_LABELS[k]}`}
+                                            style={styles.ageClearHit}
+                                        >
+                                            <Icon name="close-circle" size={22} color="rgba(255,255,255,0.38)" />
+                                        </Pressable>
+                                    ) : (
+                                        <View style={styles.ageClearPlaceholder} />
+                                    )}
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
+            </View>
+
+            <View style={styles.rulesCard}>
+                <LabelWithIcon icon="shirt-outline" label="Dress code" />
                 <TextInput
                     style={styles.input}
                     value={dressCode}
                     onChangeText={onDressCode}
-                    placeholder="Casual, no shorts"
+                    placeholder="e.g. Smart casual, no sportswear"
                     placeholderTextColor="rgba(156,163,175,0.55)"
                 />
             </View>
 
-            <View style={{ marginTop: 18 }}>
-                <Text style={styles.ruleSubLabel}>Entrance Requirements</Text>
+            <View style={styles.rulesCard}>
+                <LabelWithIcon icon="document-text-outline" label="Entrance requirements" />
+                <Text style={styles.rulesHintFlat}>
+                    Door policy, ID, reservations, or other rules guests should know.
+                </Text>
                 <TextInput
-                    style={[styles.input, styles.inputMultiline]}
+                    style={[styles.input, styles.inputMultiline, styles.rulesMultiline]}
                     value={entranceRequirements}
                     onChangeText={onEntranceRequirements}
-                    placeholder="Table reservation only"
+                    placeholder="e.g. Table reservation only"
                     placeholderTextColor="rgba(156,163,175,0.55)"
                     multiline
                     textAlignVertical="top"
                 />
             </View>
-        </>
+        </View>
     );
 }
 
@@ -1814,50 +1853,123 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
     },
-    ruleSubLabel: {
-        color: VP.text,
-        fontSize: 13,
-        fontWeight: '700',
-        marginBottom: 10,
+    rulesSection: {
+        gap: 14,
     },
-    ageInputStandalone: {
-        width: 80,
+    rulesCard: {
+        backgroundColor: FIELD_BG,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: SOFT_BORDER,
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+    },
+    rulesCardTitle: {
+        color: VP.text,
+        fontSize: 14,
+        fontWeight: '800',
+        marginBottom: 6,
+        letterSpacing: 0.2,
+    },
+    rulesHint: {
+        color: VP.muted,
+        fontSize: 12,
+        lineHeight: 17,
+        marginBottom: 12,
+    },
+    rulesHintFlat: {
+        color: VP.muted,
+        fontSize: 12,
+        lineHeight: 17,
+        marginBottom: 8,
+        marginTop: -4,
+    },
+    rulesDefaultRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    rulesDefaultInput: {
+        width: 72,
         textAlign: 'center',
+        paddingVertical: 12,
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    rulesUnit: {
+        color: VP.muted,
+        fontSize: 13,
+        fontWeight: '600',
+        flex: 1,
+    },
+    rulesDayList: {
+        gap: 10,
     },
     ageDayRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        backgroundColor: FIELD_BG,
-        borderRadius: 14,
+        gap: 10,
+        backgroundColor: '#121217',
+        borderRadius: 12,
         borderWidth: 1,
         borderColor: FIELD_BORDER,
         paddingVertical: 10,
-        paddingHorizontal: 14,
+        paddingHorizontal: 12,
     },
-    ageDayLabel: {
-        width: 36,
-        color: VP.text,
-        fontSize: 13,
-        fontWeight: '700',
+    ageDayRowActive: {
+        borderColor: GOLD,
+        backgroundColor: GOLD_SOFT,
     },
-    ageDayInput: {
-        width: 64,
+    ageDayNameCol: {
+        width: 72,
+        minWidth: 72,
+    },
+    ageDayShort: {
+        color: GOLD,
+        fontSize: 15,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    ageDayFull: {
+        color: VP.muted,
+        fontSize: 11,
+        fontWeight: '600',
+        marginTop: 2,
+        textTransform: 'capitalize',
+    },
+    ageDayInputFlex: {
+        flex: 1,
+        minWidth: 48,
         backgroundColor: '#0D0D11',
         borderRadius: 10,
         borderWidth: 1,
         borderColor: FIELD_BORDER,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 8,
         color: VP.text,
-        fontSize: 14,
+        fontSize: 15,
+        fontWeight: '800',
+        textAlign: 'center',
+    },
+    ageSuffix: {
+        width: 28,
+        color: VP.muted,
+        fontSize: 12,
         fontWeight: '700',
         textAlign: 'center',
     },
-    agePlus: {
-        color: RULES_PINK,
-        fontSize: 16,
-        fontWeight: '800',
+    ageClearHit: {
+        padding: 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    ageClearPlaceholder: {
+        width: 26,
+        height: 26,
+    },
+    rulesMultiline: {
+        minHeight: 100,
+        marginTop: 0,
     },
     uploadMenuBtn: {
         flexDirection: 'row',
