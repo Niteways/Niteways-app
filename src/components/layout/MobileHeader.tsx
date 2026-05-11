@@ -11,8 +11,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useNotifications } from "@/hooks/useNotifications";
+import { supabase } from "@/integrations/supabase/client";
+import { REQUIRE_VENUE_PORTAL_AUTH } from "@/config/deployMode";
 
 interface MobileHeaderProps {
   title: string;
@@ -89,6 +91,15 @@ export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
     };
   }, []);
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    if (REQUIRE_VENUE_PORTAL_AUTH) {
+      navigate("/login", { replace: true });
+    } else {
+      navigate("/", { replace: true });
+    }
+  };
+
   const initials = getInitials(profile);
   const fullName = (profile.name || `${profile.firstName || ""} ${profile.lastName || ""}`)
     .trim()
@@ -128,7 +139,7 @@ export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="z-[200] w-48">
               <DropdownMenuLabel>
                 <div>
                   <p className="text-sm font-medium">{fullName || "Guest User"}</p>
@@ -136,11 +147,28 @@ export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/profile")}>Profile</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/profile/settings")}>Profile Settings</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/profile" className="cursor-pointer">
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/profile/settings" className="cursor-pointer">
+                  Profile Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/settings" className="cursor-pointer">
+                  Settings
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">Sign out</DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive cursor-pointer"
+                onSelect={() => void handleSignOut()}
+              >
+                Sign out
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
