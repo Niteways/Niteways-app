@@ -1,19 +1,20 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { MemberIdCard } from "@/components/guests/MemberIdCard";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useMenuSettings } from "@/hooks/useMenuSettings";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { formatRoleLabel } from "@/hooks/useVenueProfile";
 import {
   Select,
   SelectContent,
@@ -56,29 +57,56 @@ const allMenuOptions = [
   { id: "chat", label: "Chat", icon: MessageSquare, href: "/chat" },
 ];
 
+type UserDataState = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  venueName: string;
+  memberSince: string;
+  totalCheckIns: number;
+  totalGuestsAdded: number;
+  loyaltyLevel: string;
+  rating: number;
+};
+
+const emptyUser: UserDataState = {
+  id: "",
+  name: "",
+  email: "",
+  phone: "",
+  role: "guest",
+  venueName: "",
+  memberSince: "",
+  totalCheckIns: 0,
+  totalGuestsAdded: 0,
+  loyaltyLevel: "gold",
+  rating: 0,
+};
+
+function initialsFromName(name: string): string {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return "U";
+  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+  return (p[0][0] + p[p.length - 1][0]).toUpperCase();
+}
+
 const UserProfile = () => {
   const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const desktopFileRef = useRef<HTMLInputElement>(null);
   const [selectedMenuItems, setSelectedMenuItems] = useState(["home", "tables", "guests", "checkin"]);
   const [activeTab, setActiveTab] = useState("profile");
   const [profilePicture, setProfilePicture] = useState<string>("");
-  
-  // Editable user data state
-  const [userData, setUserData] = useState({
-    id: "USR-001",
-    name: "John Doe",
-    email: "john@nightflow.com",
-    phone: "+1 555-0123",
-    role: "Manager",
-    venueName: "NightFlow Club",
-    memberSince: "2023",
-    totalCheckIns: 1250,
-    totalGuestsAdded: 3450,
-    loyaltyLevel: "gold",
-    rating: 4.8,
-  });
+  const [userData, setUserData] = useState<UserDataState>(emptyUser);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
 
-  // Load user data and menu items from storage
   useEffect(() => {
     const saved = localStorage.getItem("mobileMenuConfig");
     if (saved) {
@@ -91,32 +119,183 @@ const UserProfile = () => {
         console.error("Failed to parse menu config", e);
       }
     }
-    
-    const savedPicture = localStorage.getItem("userProfilePicture");
-    if (savedPicture) {
-      setProfilePicture(savedPicture);
-    }
-    
-    const savedUserData = localStorage.getItem("userProfileData");
-    if (savedUserData) {
-      try {
-        const parsed = JSON.parse(savedUserData);
-        setUserData(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error("Failed to parse user data", e);
+
+    const load = async () => {
+      const savedPicture = localStorage.getItem("userProfilePicture");
+      if (savedPicture) setProfilePicture(savedPicture);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.user) {
+        setUserData(emptyUser);
+        setProfileLoaded(true);
+        return;
       }
-    }
+
+      const u = session.user;
+      const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+      const phone =
+        (typeof meta.mobile === "string" && meta.mobile) ||
+        (typeof meta.phone === "string" && meta.phone) ||
+        "";
+      const fn = typeof meta.first_name === "string" ? meta.first_name : "";
+      const ln = typeof meta.last_name === "string" ? meta.last_name : "";
+      const fromMeta = [fn, ln].filter(Boolean).join(" ").trim();
+
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name, email, role, venue_id, created_at")
+        .eq("id", u.id)
+        .maybeSingle();
+
+      let venueName = "";
+      if (prof?.venue_id) {
+        const { data: vn } = await supabase.from("venues").select("name").eq("id", prof.venue_id).maybeSingle();
+        venueName = vn?.name ?? "";
+      }
+
+      setUserData({
+        id: u.id,
+        name: (prof?.full_name || fromMeta || u.email?.split("@")[0] || "").trim(),
+        email: u.email ?? prof?.email ?? "",
+        phone,
+        role: prof?.role ?? (typeof meta.role === "string" ? meta.role : "guest"),
+        venueName,
+        memberSince: prof?.created_at ? String(new Date(prof.created_at).getFullYear()) : "",
+        totalCheckIns: 0,
+        totalGuestsAdded: 0,
+        loyaltyLevel: "gold",
+        rating: 0,
+      });
+      setProfileLoaded(true);
+    };
+
+    void load();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void load();
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleSaveProfile = () => {
-    localStorage.setItem("userProfileData", JSON.stringify(userData));
-    localStorage.setItem("userProfilePicture", profilePicture);
-    // Dispatch storage event to sync across components
-    window.dispatchEvent(new StorageEvent("storage", {
-      key: "userProfileData",
-      newValue: JSON.stringify(userData),
-    }));
-    toast.success("Profile saved successfully!");
+  const handleSaveProfile = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session?.user) {
+      toast.error("Sign in to save your profile.");
+      return;
+    }
+    const u = session.user;
+    const nameTrim = userData.name.trim();
+    const emailTrim = userData.email.trim();
+    const phoneTrim = userData.phone.trim();
+
+    setSavingProfile(true);
+    try {
+      if (emailTrim && emailTrim !== (u.email ?? "")) {
+        const { error: emErr } = await supabase.auth.updateUser({ email: emailTrim });
+        if (emErr) {
+          toast.error(emErr.message);
+          return;
+        }
+        toast.info("If required, confirm your new email from the inbox.");
+      }
+
+      const { error: metaErr } = await supabase.auth.updateUser({
+        data: {
+          mobile: phoneTrim,
+          full_name: nameTrim,
+        },
+      });
+      if (metaErr) console.warn("user_metadata update", metaErr);
+
+      const { error: pErr } = await supabase.from("profiles").upsert(
+        {
+          id: u.id,
+          full_name: nameTrim,
+          email: emailTrim || u.email || null,
+          role: userData.role || "guest",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+      if (pErr) {
+        toast.error(pErr.message);
+        return;
+      }
+
+      localStorage.setItem("userProfilePicture", profilePicture);
+      const first = nameTrim.split(/\s+/)[0] ?? "";
+      const last = nameTrim.split(/\s+/).slice(1).join(" ");
+      localStorage.setItem(
+        "userProfileData",
+        JSON.stringify({
+          name: nameTrim,
+          firstName: first,
+          lastName: last,
+          role: formatRoleLabel(userData.role) || userData.role,
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("profileUpdated", {
+          detail: {
+            name: nameTrim,
+            firstName: first,
+            lastName: last,
+            role: formatRoleLabel(userData.role),
+          },
+        })
+      );
+      setUserData((prev) => ({
+        ...prev,
+        name: nameTrim,
+        email: emailTrim || prev.email,
+        phone: phoneTrim,
+      }));
+      toast.success("Profile saved to Supabase.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (pwNew.length < 6) {
+      toast.error("New password must be at least 6 characters.");
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      toast.error("New passwords do not match.");
+      return;
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const email = sessionData.session?.user?.email;
+    if (!email) {
+      toast.error("No active session.");
+      return;
+    }
+    setSavingPw(true);
+    try {
+      const { error: reErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: pwCurrent,
+      });
+      if (reErr) {
+        toast.error("Current password is incorrect.");
+        return;
+      }
+      const { error: upErr } = await supabase.auth.updateUser({ password: pwNew });
+      if (upErr) {
+        toast.error(upErr.message);
+        return;
+      }
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+      toast.success("Password updated.");
+    } finally {
+      setSavingPw(false);
+    }
   };
 
   const handleMenuItemChange = (index: number, value: string) => {
@@ -127,15 +306,21 @@ const UserProfile = () => {
 
   const handleSaveMenu = () => {
     localStorage.setItem("mobileMenuConfig", JSON.stringify(selectedMenuItems));
-    window.dispatchEvent(new StorageEvent("storage", {
-      key: "mobileMenuConfig",
-      newValue: JSON.stringify(selectedMenuItems),
-    }));
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "mobileMenuConfig",
+        newValue: JSON.stringify(selectedMenuItems),
+      })
+    );
     toast.success("Menu saved successfully!");
   };
 
   const handleProfilePictureClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleDesktopAvatarClick = () => {
+    desktopFileRef.current?.click();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,13 +331,35 @@ const UserProfile = () => {
         const base64 = reader.result as string;
         setProfilePicture(base64);
         localStorage.setItem("userProfilePicture", base64);
-        toast.success("Profile picture updated!");
+        toast.success("Profile picture updated locally.");
       };
       reader.readAsDataURL(file);
     }
+    e.target.value = "";
   };
 
   if (isMobile) {
+    if (!profileLoaded) {
+      return (
+        <AdminLayout title="Profile" subtitle="Manage your account settings">
+          <div className="flex justify-center py-24">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+          </div>
+        </AdminLayout>
+      );
+    }
+    if (!userData.id) {
+      return (
+        <AdminLayout title="Profile" subtitle="Manage your account settings">
+          <div className="p-6 text-center space-y-4">
+            <p className="text-muted-foreground text-sm">Sign in to load your profile.</p>
+            <Button asChild size="sm">
+              <Link to="/login">Sign in</Link>
+            </Button>
+          </div>
+        </AdminLayout>
+      );
+    }
     return (
       <AdminLayout title="Profile" subtitle="Manage your account settings">
         <div className="space-y-4 pb-24">
@@ -177,7 +384,7 @@ const UserProfile = () => {
                         <Avatar className="w-24 h-24">
                           <AvatarImage src={profilePicture} />
                           <AvatarFallback className="bg-primary/20 text-primary text-2xl">
-                            {userData.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                            {initialsFromName(userData.name)}
                           </AvatarFallback>
                         </Avatar>
                         <Button
@@ -199,7 +406,7 @@ const UserProfile = () => {
                       <div className="text-center">
                         <h2 className="text-lg font-semibold">{userData.name}</h2>
                         <Badge variant="outline" className="bg-primary/10 text-primary border-0">
-                          {userData.role}
+                          {formatRoleLabel(userData.role) || userData.role}
                         </Badge>
                       </div>
                     </div>
@@ -246,9 +453,9 @@ const UserProfile = () => {
                         onChange={e => setUserData({...userData, phone: e.target.value})}
                       />
                     </div>
-                    <Button className="w-full gap-2" onClick={handleSaveProfile}>
+                    <Button className="w-full gap-2" onClick={() => void handleSaveProfile()} disabled={savingProfile}>
                       <Save className="w-4 h-4" />
-                      Save Changes
+                      {savingProfile ? "Saving…" : "Save Changes"}
                     </Button>
                   </CardContent>
                 </Card>
@@ -352,17 +559,34 @@ const UserProfile = () => {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label className="text-xs">Current Password</Label>
-                      <Input type="password" />
+                      <Input
+                        type="password"
+                        autoComplete="current-password"
+                        value={pwCurrent}
+                        onChange={(e) => setPwCurrent(e.target.value)}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs">New Password</Label>
-                      <Input type="password" />
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={pwNew}
+                        onChange={(e) => setPwNew(e.target.value)}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs">Confirm New Password</Label>
-                      <Input type="password" />
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={pwConfirm}
+                        onChange={(e) => setPwConfirm(e.target.value)}
+                      />
                     </div>
-                    <Button className="w-full">Update Password</Button>
+                    <Button className="w-full" disabled={savingPw} onClick={() => void handleUpdatePassword()}>
+                      {savingPw ? "Updating…" : "Update Password"}
+                    </Button>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -425,7 +649,10 @@ const UserProfile = () => {
                     </div>
                     <div className="pt-2 border-t border-border">
                       <p className="text-xs text-muted-foreground">
-                        Role: <span className="font-medium text-foreground">{userData.role}</span>
+                        Role:{" "}
+                        <span className="font-medium text-foreground">
+                          {formatRoleLabel(userData.role) || userData.role}
+                        </span>
                       </p>
                     </div>
                   </CardContent>
@@ -439,6 +666,32 @@ const UserProfile = () => {
   }
 
   // Desktop layout
+  if (!profileLoaded) {
+    return (
+      <AdminLayout title="Profile" subtitle="Manage your account settings">
+        <div className="max-w-4xl flex items-center justify-center py-24">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (!userData.id) {
+    return (
+      <AdminLayout title="Profile" subtitle="Manage your account settings">
+        <div className="max-w-md mx-auto glass-card p-8 text-center space-y-4">
+          <p className="text-muted-foreground">Sign in to load your venue profile from Supabase.</p>
+          <Button asChild>
+            <Link to="/login">Go to sign in</Link>
+          </Button>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const roleBadge = formatRoleLabel(userData.role) || userData.role;
+  const venueLine = userData.venueName ? `${roleBadge} at ${userData.venueName}` : roleBadge;
+
   return (
     <AdminLayout title="Profile" subtitle="Manage your account settings">
       <div className="max-w-4xl space-y-6">
@@ -449,29 +702,38 @@ const UserProfile = () => {
         >
           <div className="relative">
             <Avatar className="w-24 h-24">
-              <AvatarImage src="" />
+              <AvatarImage src={profilePicture} />
               <AvatarFallback className="bg-primary/20 text-primary text-2xl">
-                JD
+                {initialsFromName(userData.name)}
               </AvatarFallback>
             </Avatar>
             <Button
               variant="outline"
               size="icon"
               className="absolute bottom-0 right-0 h-8 w-8 rounded-full"
+              type="button"
+              onClick={handleDesktopAvatarClick}
             >
               <Camera className="w-4 h-4" />
             </Button>
+            <input
+              ref={desktopFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
           <div>
-            <h2 className="text-2xl font-semibold">{userData.name}</h2>
+            <h2 className="text-2xl font-semibold">{userData.name || "Your profile"}</h2>
             <p className="text-muted-foreground">{userData.email}</p>
             <Badge variant="outline" className="mt-2 bg-primary/10 text-primary border-0">
-              {userData.role} at {userData.venueName}
+              {venueLine}
             </Badge>
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -484,19 +746,33 @@ const UserProfile = () => {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Full Name</Label>
-                  <Input defaultValue={userData.name} />
+                  <Input
+                    value={userData.name}
+                    onChange={(e) => setUserData({ ...userData, name: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input type="email" defaultValue={userData.email} />
+                  <Input
+                    type="email"
+                    value={userData.email}
+                    onChange={(e) => setUserData({ ...userData, email: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Phone</Label>
-                  <Input defaultValue={userData.phone} />
+                  <Input
+                    value={userData.phone}
+                    onChange={(e) => setUserData({ ...userData, phone: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Stored in Supabase Auth user metadata as <code className="text-xs">mobile</code> (same as the
+                    venue app).
+                  </p>
                 </div>
-                <Button className="w-full gap-2">
+                <Button className="w-full gap-2" disabled={savingProfile} onClick={() => void handleSaveProfile()}>
                   <Save className="w-4 h-4" />
-                  Save Changes
+                  {savingProfile ? "Saving…" : "Save Changes"}
                 </Button>
               </CardContent>
             </Card>
@@ -514,17 +790,38 @@ const UserProfile = () => {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Current Password</Label>
-                  <Input type="password" />
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>New Password</Label>
-                  <Input type="password" />
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Confirm Password</Label>
-                  <Input type="password" />
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                  />
                 </div>
-                <Button className="w-full">Update Password</Button>
+                <Button className="w-full" disabled={savingPw} onClick={() => void handleUpdatePassword()}>
+                  {savingPw ? "Updating…" : "Update Password"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Forgot your password? Use <Link className="text-primary underline" to="/login">Forgot password?</Link>{" "}
+                  on the sign-in page.
+                </p>
               </CardContent>
             </Card>
           </motion.div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-function formatRoleLabel(raw: string | null | undefined): string {
+export function formatRoleLabel(raw: string | null | undefined): string {
   const r = (raw || "").trim();
   if (!r) return "";
   const map: Record<string, string> = {
