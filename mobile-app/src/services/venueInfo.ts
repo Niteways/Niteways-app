@@ -48,6 +48,16 @@ export const DEFAULT_OPENING_HOURS: OpeningHoursJson = {
     sun: { closed: true, open: '21:00', close: '03:00' },
 };
 
+/** Stable fingerprint — compare before/after save to detect RLS noise or silent column drops. */
+export function serializeOpeningHoursForCompare(h: OpeningHoursJson): string {
+    const parts: string[] = [];
+    for (const k of DAY_KEYS) {
+        const c = h[k];
+        parts.push(`${k}:${c.closed ? 1 : 0}:${c.open.trim()}:${c.close.trim()}`);
+    }
+    return parts.join('|');
+}
+
 function coerceOpeningHoursJsonObject(raw: unknown): Record<string, unknown> | null {
     if (raw == null) return null;
     if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;

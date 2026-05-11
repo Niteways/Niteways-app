@@ -28,6 +28,7 @@ import {
     DAY_LABELS,
     DEFAULT_OPENING_HOURS,
     fetchVenueProfile,
+    serializeOpeningHoursForCompare,
     removeVenueMenuPdf,
     removeVenuePhoto,
     subscribeVenueRowChanges,
@@ -119,10 +120,10 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
     }, []);
 
-    const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const load = useCallback(async (opts?: { silent?: boolean }): Promise<Draft | null> => {
         if (!venueId) {
             if (!opts?.silent) setLoading(false);
-            return;
+            return null;
         }
         if (!opts?.silent) setLoading(true);
         try {
@@ -153,7 +154,9 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 setDraft(asDraft);
                 setOriginal(asDraft);
                 setRemoteStale(false);
+                return asDraft;
             }
+            return null;
         } finally {
             if (!opts?.silent) setLoading(false);
         }
@@ -215,6 +218,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         }
         setSaving(true);
         try {
+            const hoursFingerprint = serializeOpeningHoursForCompare(draft.opening_hours_json);
             const res = await updateVenueProfile(venueId, {
                 name: draft.name,
                 category: draft.category,
@@ -237,7 +241,19 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 Alert.alert('Could not save', res.error || 'Please try again.');
                 return;
             }
-            await load({ silent: true });
+            const applied = await load({ silent: true });
+            const hoursSkipped = res.missingColumns?.includes('opening_hours_json');
+            if (
+                applied &&
+                !hoursSkipped &&
+                serializeOpeningHoursForCompare(applied.opening_hours_json) !== hoursFingerprint
+            ) {
+                Alert.alert(
+                    'Opening hours did not stick',
+                    'Supabase accepted the save, but the weekly hours loaded back from the server do not match. That usually means the database rejected or altered this field (Row Level Security), another session wrote older hours, or mobile and web point at different Supabase projects — not a simple offline/disconnect issue.',
+                );
+                return;
+            }
             if (res.missingColumns && res.missingColumns.length) {
                 Alert.alert(
                     'Partially saved',
