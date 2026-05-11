@@ -52,6 +52,10 @@ function coerceOpeningHoursJsonObject(raw: unknown): Record<string, unknown> | n
 
 function coerceDayClosed(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value !== 0;
+  }
+  if (typeof value === "bigint") return value !== BigInt(0);
   if (typeof value === "string") {
     const s = value.trim().toLowerCase();
     if (s === "false" || s === "0" || s === "no") return false;

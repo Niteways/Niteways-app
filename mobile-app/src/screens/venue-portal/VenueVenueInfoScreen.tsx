@@ -27,9 +27,11 @@ import {
     DAY_KEYS,
     DAY_LABELS,
     fetchVenueProfile,
+    materializeOpeningHoursJsonForPersist,
     normalizeOpeningHours,
     removeVenueMenuPdf,
     removeVenuePhoto,
+    serializeOpeningHoursForCompare,
     subscribeVenueRowChanges,
     updateVenueProfile,
     uploadVenueMenuPdf,
@@ -226,11 +228,15 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         }
         setSaving(true);
         try {
-            const resCore = await updateVenueProfile(venueId, {
+            const hoursWantFp = serializeOpeningHoursForCompare(
+                materializeOpeningHoursJsonForPersist(draft.opening_hours_json)
+            );
+            const res = await updateVenueProfile(venueId, {
                 name: draft.name,
                 category: draft.category,
                 description: draft.description,
                 address: draft.address,
+                city_id: draft.city_id,
                 email: draft.email,
                 phone: draft.phone,
                 music_genre: draft.music_genre,
@@ -242,26 +248,32 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                 spotify_link: draft.spotify_link,
                 menu_url: draft.menu_url,
                 google_maps_url: draft.google_maps_url,
-            });
-            if (!resCore.ok) {
-                Alert.alert('Could not save', resCore.error || 'Please try again.');
-                return;
-            }
-            const resHours = await updateVenueProfile(venueId, {
+                latitude: draft.latitude,
+                longitude: draft.longitude,
                 opening_hours_json: draft.opening_hours_json,
             });
-            if (!resHours.ok) {
-                Alert.alert('Could not save opening hours', resHours.error || 'Please try again.');
+            if (!res.ok) {
+                Alert.alert('Could not save', res.error || 'Please try again.');
                 return;
             }
+            if (res.returnedOpeningHoursJson != null) {
+                const hoursGotFp = serializeOpeningHoursForCompare(
+                    normalizeOpeningHours(res.returnedOpeningHoursJson)
+                );
+                if (hoursGotFp !== hoursWantFp) {
+                    await load({ silent: true });
+                    Alert.alert(
+                        'Opening hours did not stick',
+                        'The server returned a different schedule than you saved. Ask your admin to confirm `venues.opening_hours_json` exists and RLS allows updates for your venue.'
+                    );
+                    return;
+                }
+            }
             await load({ silent: true });
-            const missingMerged = [
-                ...new Set([...(resCore.missingColumns ?? []), ...(resHours.missingColumns ?? [])]),
-            ];
-            if (missingMerged.length) {
+            if (res.missingColumns?.length) {
                 Alert.alert(
                     'Partially saved',
-                    `Saved, but these columns are missing from your venues table: ${missingMerged.join(
+                    `Saved, but these columns are missing from your venues table: ${res.missingColumns.join(
                         ', '
                     )}. Run the latest migration to enable them.`
                 );
