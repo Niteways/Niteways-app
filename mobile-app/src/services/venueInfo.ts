@@ -365,10 +365,16 @@ export async function updateVenueProfile(
     const patchIncludedOpeningHours = patch.opening_hours_json !== undefined;
 
     const attempt = async (body: Record<string, unknown>) =>
-        supabase.from('venues').update(body).eq('id', venueId).select('opening_hours_json').maybeSingle();
+        supabase
+            .from('venues')
+            .update(body)
+            .eq('id', venueId)
+            .select('id, opening_hours_json')
+            .maybeSingle();
 
     let res = await attempt(payload);
     const missing: string[] = [];
+    let openingHoursDroppedAsMissingColumn = false;
 
     // Drop any column the DB rejects as missing and retry until success or empty payload.
     while (res.error && isMissingColumnError(res.error)) {
@@ -377,6 +383,7 @@ export async function updateVenueProfile(
         delete payload[col];
         // Never leave `opening_days` without `opening_hours_json` from this patch — avoids CSV-only writes.
         if (col === 'opening_hours_json') {
+            openingHoursDroppedAsMissingColumn = true;
             delete payload.opening_days;
         }
         missing.push(col);
@@ -394,6 +401,24 @@ export async function updateVenueProfile(
     if (res.error) {
         console.warn('[venueInfo] updateVenueProfile', res.error.message);
         return { ok: false, error: res.error.message, missingColumns: missing.length ? missing : undefined };
+    }
+
+    if (patchIncludedOpeningHours && openingHoursDroppedAsMissingColumn) {
+        return {
+            ok: false,
+            error:
+                'Your Supabase `venues` table has no `opening_hours_json` column (or PostgREST rejected it). Run migration `20260420140000_venue_info_extra_columns.sql` (or venue_info_extra_columns.sql) on your project, then retry.',
+            missingColumns: [...missing, 'opening_hours_json'],
+        };
+    }
+
+    // Successful HTTP but no row usually means wrong id, soft-delete filters elsewhere, or RLS UPDATE matched 0 rows.
+    if (res.data == null && Object.keys(payload).length > 0) {
+        return {
+            ok: false,
+            error:
+                'Venue update affected no row. In Supabase: apply migration 20260511140000_venues_venue_portal_update_rls.sql (adds UPDATE policy for venue owners), ensure venues.owner_id or profiles.venue_id matches your auth user, and check RLS on public.venues.',
+        };
     }
 
     let returnedOpeningHoursJson: OpeningHoursJson | null | undefined = undefined;
