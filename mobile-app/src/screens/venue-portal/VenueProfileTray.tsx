@@ -123,9 +123,12 @@ export function VenueProfileTray({
             <View style={styles.right}>
                 <TouchableOpacity
                     style={styles.iconBtn}
-                    onPress={() => navigation.navigate('VenueNotifications')}
-                    hitSlop={10}
+                    onPress={() => {
+                        navigation.push('VenueNotifications');
+                    }}
+                    hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                     accessibilityLabel="Notifications"
+                    activeOpacity={0.75}
                 >
                     <Icon name="notifications-outline" size={22} color={VP.text} />
                     {showBadge ? (
@@ -221,7 +224,12 @@ export function VenueProfileTray({
 
 const styles = StyleSheet.create({
     right: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-    iconBtn: { position: 'relative', padding: 4 },
+    iconBtn: {
+        position: 'relative',
+        padding: 4,
+        zIndex: 50,
+        elevation: 50,
+    },
     badge: {
         position: 'absolute',
         top: -2,

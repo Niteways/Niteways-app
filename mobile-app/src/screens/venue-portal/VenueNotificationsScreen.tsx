@@ -21,6 +21,7 @@ import {
     markAllVenueNotificationsRead,
     markVenueNotificationRead,
     subscribeVenueUserNotifications,
+    venueNotificationIsUnread,
     type VenueUserNotification,
 } from '../../services/venueNotifications';
 import { VP } from './venuePortalTheme';
@@ -76,10 +77,10 @@ export default function VenueNotificationsScreen({ navigation }: Props) {
         };
     }, [load]);
 
-    const unreadCount = useMemo(() => rows.filter((n) => !n.is_read).length, [rows]);
+    const unreadCount = useMemo(() => rows.filter((n) => venueNotificationIsUnread(n)).length, [rows]);
 
     const visible = useMemo(() => {
-        if (filter === 'unread') return rows.filter((n) => !n.is_read);
+        if (filter === 'unread') return rows.filter((n) => venueNotificationIsUnread(n));
         return rows;
     }, [filter, rows]);
 
@@ -100,7 +101,7 @@ export default function VenueNotificationsScreen({ navigation }: Props) {
     };
 
     const onPressRow = async (item: VenueUserNotification) => {
-        if (item.is_read) return;
+        if (!venueNotificationIsUnread(item)) return;
         const { ok } = await markVenueNotificationRead(item.id);
         if (ok) {
             setRows((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n)));
@@ -109,7 +110,7 @@ export default function VenueNotificationsScreen({ navigation }: Props) {
 
     const renderItem = ({ item }: { item: VenueUserNotification }) => (
         <TouchableOpacity
-            style={[styles.card, !item.is_read && styles.cardUnread]}
+            style={[styles.card, venueNotificationIsUnread(item) && styles.cardUnread]}
             onPress={() => void onPressRow(item)}
             activeOpacity={0.85}
         >
@@ -130,7 +131,7 @@ export default function VenueNotificationsScreen({ navigation }: Props) {
                     </Text>
                 </View>
             </View>
-            {!item.is_read ? <View style={styles.unreadDot} /> : null}
+            {!venueNotificationIsUnread(item) ? null : <View style={styles.unreadDot} />}
         </TouchableOpacity>
     );
 

@@ -6,12 +6,24 @@ export type VenueUserNotification = {
     message: string;
     type: string;
     related_id: string | null;
+    /** Prefer boolean; Supabase/legacy rows may use null or strings. */
     is_read: boolean;
     created_at: string;
 };
 
+/** Stable unread check — only explicit unread states count (not null/missing). */
+export function venueNotificationIsUnread(n: { is_read?: boolean | null | unknown }): boolean {
+    return n.is_read === false;
+}
+
 function normalizedEmail(email: string | null | undefined): string {
     return (email || '').trim().toLowerCase();
+}
+
+function coerceNotificationRead(raw: unknown): boolean {
+    if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true;
+    if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false;
+    return true;
 }
 
 /** PostgREST when table is missing on this Supabase project — avoid LogBox noise. */
@@ -49,7 +61,13 @@ export async function fetchVenueUserNotifications(
         }
         return [];
     }
-    return (data || []) as VenueUserNotification[];
+    return (data || []).map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+            ...(row as VenueUserNotification),
+            is_read: coerceNotificationRead(r.is_read),
+        };
+    });
 }
 
 export async function fetchVenueUnreadNotificationCount(
@@ -57,7 +75,7 @@ export async function fetchVenueUnreadNotificationCount(
     email: string | null
 ): Promise<number> {
     const list = await fetchVenueUserNotifications(userId, email);
-    return list.filter((n) => !n.is_read).length;
+    return list.filter((n) => venueNotificationIsUnread(n)).length;
 }
 
 /** Marks every unread row for this user as read (same scope as fetch). */
@@ -66,13 +84,13 @@ export async function markAllVenueNotificationsRead(
     email: string | null
 ): Promise<{ ok: boolean; error?: string }> {
     const em = normalizedEmail(email);
-    let q = supabase.from('user_notifications').update({ is_read: true }).eq('is_read', false);
-
+    let q = supabase.from('user_notifications').update({ is_read: true });
     if (em) {
         q = q.or(`user_id.eq.${userId},user_email.eq.${em}`);
     } else {
         q = q.eq('user_id', userId);
     }
+    q = q.or('is_read.eq.false,is_read.is.null');
 
     const { error } = await q;
     if (error) return { ok: false, error: error.message };
