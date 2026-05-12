@@ -2,10 +2,9 @@
 -- If "Public update venues" was removed on production without an owner policy,
 -- PostgREST returns success with 0 rows — the app shows "Venue update affected no row".
 --
--- This policy allows authenticated users linked to the venue to UPDATE it:
---   • venues.owner_id = auth.uid()
---   • profiles.id = auth.uid() AND profiles.venue_id = venues.id
---   • venue_team_members.user_id = auth.uid() AND venue_id matches
+-- NOTE: If SELECT RLS on `profiles` / `venue_team_members` blocks the caller, inline EXISTS
+-- in policies may never match. Prefer also applying:
+--   20260511150000_venues_portal_update_rls_security_definer.sql
 
 DROP POLICY IF EXISTS "Venue portal users update own venue" ON public.venues;
 

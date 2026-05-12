@@ -417,7 +417,7 @@ export async function updateVenueProfile(
         return {
             ok: false,
             error:
-                'Venue update affected no row. In Supabase: apply migration 20260511140000_venues_venue_portal_update_rls.sql (adds UPDATE policy for venue owners), ensure venues.owner_id or profiles.venue_id matches your auth user, and check RLS on public.venues.',
+                'Venue update affected no row. In Supabase SQL Editor run migration 20260511150000_venues_portal_update_rls_security_definer.sql (UPDATE policy + linkage helper). Also set venues.owner_id OR profiles.venue_id to your auth user for this venue.',
         };
     }
 
