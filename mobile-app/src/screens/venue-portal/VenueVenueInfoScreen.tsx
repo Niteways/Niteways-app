@@ -117,7 +117,10 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
     const [remoteStale, setRemoteStale] = useState(false);
     const dirtyRef = useRef(false);
     const savingRef = useRef(false);
+    const loadingRef = useRef(false);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** Bumps when a new fetch starts so older in-flight responses cannot overwrite state. */
+    const loadGenRef = useRef(0);
 
     const setField = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => {
         setDraft((d) => ({ ...d, [key]: value }));
@@ -128,14 +131,17 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
     }, []);
 
-    const load = useCallback(async (opts?: { silent?: boolean }): Promise<Draft | null> => {
+    const load = useCallback(async (opts?: { silent?: boolean; force?: boolean }): Promise<Draft | null> => {
         if (!venueId) {
             if (!opts?.silent) setLoading(false);
             return null;
         }
+        const myGeneration = ++loadGenRef.current;
         if (!opts?.silent) setLoading(true);
         try {
             const profile = await fetchVenueProfile(venueId);
+            if (myGeneration !== loadGenRef.current) return null;
+            if (dirtyRef.current && !opts?.force) return null;
             if (profile) {
                 const asDraft: Draft = {
                     name: profile.name,
@@ -177,14 +183,9 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
     }, [load]);
 
     const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(original), [draft, original]);
-
-    useEffect(() => {
-        dirtyRef.current = dirty;
-    }, [dirty]);
-
-    useEffect(() => {
-        savingRef.current = saving;
-    }, [saving]);
+    dirtyRef.current = dirty;
+    loadingRef.current = loading;
+    savingRef.current = saving;
 
     useEffect(() => {
         if (!venueId) return;
@@ -193,8 +194,9 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
             debounceTimerRef.current = setTimeout(() => {
                 debounceTimerRef.current = null;
                 if (savingRef.current) return;
+                if (loadingRef.current) return;
                 if (!dirtyRef.current) {
-                    void load();
+                    void load({ silent: true });
                 } else {
                     setRemoteStale(true);
                 }
@@ -209,8 +211,14 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
 
     useEffect(() => {
         const sub = AppState.addEventListener('change', (next) => {
-            if (next === 'active' && venueId && !dirtyRef.current && !savingRef.current) {
-                void load();
+            if (
+                next === 'active' &&
+                venueId &&
+                !dirtyRef.current &&
+                !savingRef.current &&
+                !loadingRef.current
+            ) {
+                void load({ silent: true });
             }
         });
         return () => sub.remove();
@@ -261,7 +269,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                     normalizeOpeningHours(res.returnedOpeningHoursJson)
                 );
                 if (hoursGotFp !== hoursWantFp) {
-                    await load({ silent: true });
+                    await load({ silent: true, force: true });
                     Alert.alert(
                         'Opening hours did not stick',
                         'The server returned a different schedule than you saved. Ask your admin to confirm `venues.opening_hours_json` exists and RLS allows updates for your venue.'
@@ -269,7 +277,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                     return;
                 }
             }
-            await load({ silent: true });
+            await load({ silent: true, force: true });
             if (res.missingColumns?.length) {
                 Alert.alert(
                     'Partially saved',
@@ -363,7 +371,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
                             style={styles.remoteStaleBtn}
                             onPress={() => {
                                 setRemoteStale(false);
-                                void load();
+                                void load({ silent: true, force: true });
                             }}
                             activeOpacity={0.85}
                         >
