@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useVenueProfile } from "@/hooks/useVenueProfile";
+import { usePortalNotificationUnreadCount } from "@/hooks/usePortalNotificationUnreadCount";
 import { REQUIRE_VENUE_PORTAL_AUTH } from "@/config/deployMode";
 
 interface AdminHeaderProps {
@@ -36,6 +37,7 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
   const navigate = useNavigate();
   const { isImpersonating, impersonatedMember, impersonatedVenueId, stopImpersonation } = useImpersonation();
   const { displayName, roleLabel } = useVenueProfile();
+  const { unreadCount } = usePortalNotificationUnreadCount();
 
   const [profilePicture, setProfilePicture] = useState<string>("");
   const [venueName, setVenueName] = useState<string>("");
@@ -138,11 +140,19 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
             />
           </div>
 
-          <Button variant="ghost" size="icon" className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label="Notifications"
+            onClick={() => navigate("/notifications")}
+          >
             <Bell className="w-5 h-5 text-muted-foreground" />
-            <Badge className="absolute -top-1 -right-1 w-5 h-5 p-0 flex items-center justify-center text-xs bg-coral border-0">
-              3
-            </Badge>
+            {unreadCount > 0 && (
+              <Badge className="absolute -top-1 -right-1 min-w-5 h-5 px-1 flex items-center justify-center text-xs bg-coral border-0">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </Badge>
+            )}
           </Button>
 
           <DropdownMenu>

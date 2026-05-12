@@ -95,6 +95,21 @@ function duplicateVenueDraft(source: Draft): Draft {
     return next;
 }
 
+/** Sorted-key JSON so nested maps (e.g. opening_hours_json) compare reliably vs JSON.stringify key order. */
+function stableStringify(value: unknown): string {
+    if (value === null) return 'null';
+    const t = typeof value;
+    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
+    if (t === 'bigint') return JSON.stringify(Number(value));
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    if (t === 'object') {
+        const o = value as Record<string, unknown>;
+        const keys = Object.keys(o).sort();
+        return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
 type Props = {
     onBack: () => void;
 };
@@ -182,7 +197,7 @@ export default function VenueVenueInfoScreen({ onBack }: Props) {
         void load();
     }, [load]);
 
-    const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(original), [draft, original]);
+    const dirty = useMemo(() => stableStringify(draft) !== stableStringify(original), [draft, original]);
     dirtyRef.current = dirty;
     loadingRef.current = loading;
     savingRef.current = saving;

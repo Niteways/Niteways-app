@@ -558,10 +558,10 @@ const LivePerformance = () => {
                 >
                   <AlertCircle
                     className={cn(
-                      "w-5 h-5 mt-0.5",
-                      alert.type === "warning" && "text-gold",
-                      alert.type === "info" && "text-primary",
-                      alert.type === "success" && "text-teal"
+                    "w-5 h-5 mt-0.5",
+                    alert.type === "warning" && "text-gold",
+                    alert.type === "info" && "text-primary",
+                    alert.type === "success" && "text-teal"
                     )}
                   />
                   <span className="text-sm">{alert.message}</span>
