@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { setBookingStatus } from "@/lib/bookingStatus";
 
 type TableBooking = Tables<"table_bookings"> & {
   guests?: { name: string; guest_id: string } | null;
@@ -153,19 +154,17 @@ export function useRealtimeTableBookings(options: UseRealtimeTableBookingsOption
     if (error) throw error;
   }, []);
 
-  const confirmBooking = useCallback(
-    async (id: string) => {
-      return updateBooking(id, { status: "confirmed" });
-    },
-    [updateBooking]
-  );
+  const confirmBooking = useCallback(async (id: string) => {
+    const { ok, error } = await setBookingStatus(id, "confirmed");
+    if (!ok) throw new Error(error || "Could not confirm booking");
+    return { id, status: "confirmed" } as const;
+  }, []);
 
-  const cancelBooking = useCallback(
-    async (id: string) => {
-      return updateBooking(id, { status: "cancelled" });
-    },
-    [updateBooking]
-  );
+  const cancelBooking = useCallback(async (id: string) => {
+    const { ok, error } = await setBookingStatus(id, "cancelled");
+    if (!ok) throw new Error(error || "Could not cancel booking");
+    return { id, status: "cancelled" } as const;
+  }, []);
 
   return {
     bookings,

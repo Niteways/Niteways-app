@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { setBookingStatus } from "@/lib/bookingStatus";
 
 export type TableStatus = "available" | "confirmed" | "pending" | "vip" | "blocked";
 
@@ -183,89 +184,73 @@ export function useRealtimeTableStatus(date: string, options: UseRealtimeTableSt
   );
 
   const acceptBooking = useCallback(async (bookingId: string) => {
-    try {
-      // Get booking details first
-      const { data: bookingData } = await supabase
-        .from("table_bookings")
-        .select("*, venues:venue_id(name)")
-        .eq("id", bookingId)
-        .single();
-
-      const { error } = await supabase
-        .from("table_bookings")
-        .update({ status: "confirmed" })
-        .eq("id", bookingId);
-
-      if (error) throw error;
-
-      // Send notification
-      if (bookingData?.guest_email) {
-        try {
-          await supabase.functions.invoke("booking-notification", {
-            body: {
-              bookingId,
-              status: "confirmed",
-              guestEmail: bookingData.guest_email,
-              guestName: bookingData.guest_name,
-              venueName: bookingData.venues?.name || "Venue",
-              tableNumber: bookingData.table_number,
-              bookingDate: bookingData.booking_date,
-              bookingTime: bookingData.booking_time,
-            },
-          });
-        } catch (notifError) {
-          console.warn("Notification failed:", notifError);
-        }
-      }
-
-      return true;
-    } catch (error) {
+    // Status write + guest notification go through the Supabase RPC so web/mobile stay in sync.
+    const { ok, error } = await setBookingStatus(bookingId, "confirmed");
+    if (!ok) {
       console.error("Error accepting booking:", error);
       return false;
     }
+
+    // Email notification (separate channel) — best-effort, don't block on errors.
+    try {
+      const { data: bookingData } = await supabase
+        .from("table_bookings")
+        .select("guest_name, guest_email, table_number, booking_date, booking_time, venues:venue_id(name)")
+        .eq("id", bookingId)
+        .single();
+      if (bookingData?.guest_email) {
+        await supabase.functions.invoke("booking-notification", {
+          body: {
+            bookingId,
+            status: "confirmed",
+            guestEmail: bookingData.guest_email,
+            guestName: bookingData.guest_name,
+            venueName: bookingData.venues?.name || "Venue",
+            tableNumber: bookingData.table_number,
+            bookingDate: bookingData.booking_date,
+            bookingTime: bookingData.booking_time,
+          },
+        });
+      }
+    } catch (notifError) {
+      console.warn("Booking email notification failed:", notifError);
+    }
+
+    return true;
   }, []);
 
   const declineBooking = useCallback(async (bookingId: string) => {
-    try {
-      // Get booking details first
-      const { data: bookingData } = await supabase
-        .from("table_bookings")
-        .select("*, venues:venue_id(name)")
-        .eq("id", bookingId)
-        .single();
-
-      const { error } = await supabase
-        .from("table_bookings")
-        .update({ status: "cancelled" })
-        .eq("id", bookingId);
-
-      if (error) throw error;
-
-      // Send notification
-      if (bookingData?.guest_email) {
-        try {
-          await supabase.functions.invoke("booking-notification", {
-            body: {
-              bookingId,
-              status: "declined",
-              guestEmail: bookingData.guest_email,
-              guestName: bookingData.guest_name,
-              venueName: bookingData.venues?.name || "Venue",
-              tableNumber: bookingData.table_number,
-              bookingDate: bookingData.booking_date,
-              bookingTime: bookingData.booking_time,
-            },
-          });
-        } catch (notifError) {
-          console.warn("Notification failed:", notifError);
-        }
-      }
-
-      return true;
-    } catch (error) {
+    const { ok, error } = await setBookingStatus(bookingId, "cancelled");
+    if (!ok) {
       console.error("Error declining booking:", error);
       return false;
     }
+
+    try {
+      const { data: bookingData } = await supabase
+        .from("table_bookings")
+        .select("guest_name, guest_email, table_number, booking_date, booking_time, venues:venue_id(name)")
+        .eq("id", bookingId)
+        .single();
+      if (bookingData?.guest_email) {
+        await supabase.functions.invoke("booking-notification", {
+          body: {
+            bookingId,
+            status: "declined",
+            guestEmail: bookingData.guest_email,
+            guestName: bookingData.guest_name,
+            venueName: bookingData.venues?.name || "Venue",
+            tableNumber: bookingData.table_number,
+            bookingDate: bookingData.booking_date,
+            bookingTime: bookingData.booking_time,
+          },
+        });
+      }
+    } catch (notifError) {
+      console.warn("Booking email notification failed:", notifError);
+    }
+
+    return true;
   }, []);
 
   useEffect(() => {

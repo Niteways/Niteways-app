@@ -468,11 +468,29 @@ export async function fetchBookingById(bookingId: string): Promise<TableBookingR
     return data as TableBookingRow;
 }
 
+/**
+ * Canonical status enum shared with the web portal — `declined` is folded into
+ * `cancelled` so the user-facing notification messaging is identical.
+ */
+export type BookingStatusLegacy =
+    | 'pending'
+    | 'confirmed'
+    | 'declined'
+    | 'completed'
+    | 'cancelled'
+    | 'checked_in'
+    | 'no_show'
+    | 'blocked';
+
 export async function updateBookingStatus(
     bookingId: string,
-    status: 'pending' | 'confirmed' | 'declined' | 'completed' | 'cancelled' | 'no_show'
+    status: BookingStatusLegacy
 ): Promise<{ ok: boolean; error?: string }> {
-    const { error } = await supabase.from('table_bookings').update({ status }).eq('id', bookingId);
+    const canonical = status === 'declined' ? 'cancelled' : status;
+    const { error } = await supabase.rpc('set_booking_status', {
+        p_booking_id: bookingId,
+        p_status: canonical,
+    });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
 }

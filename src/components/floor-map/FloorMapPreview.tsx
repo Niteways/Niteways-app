@@ -17,6 +17,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { GuestProfileModal } from "@/components/guests/GuestProfileModal";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { setBookingStatus } from "@/lib/bookingStatus";
 import { toast } from "sonner";
 
 import { getPortalScopeVenueId } from "@/config/venueScope";
@@ -254,39 +255,29 @@ export function FloorMapPreview({ className, onTableClick, onAccept, onDecline, 
 
   const handleAccept = async () => {
     if (selectedTable && selectedTable.bookingId) {
-      try {
-        const { error } = await supabase
-          .from("table_bookings")
-          .update({ status: "confirmed" })
-          .eq("id", selectedTable.bookingId);
-        
-        if (error) throw error;
-        toast.success(`Accepted booking for ${selectedTable.label}`);
-        onAccept?.(selectedTable.id);
-        setSelectedTable(null);
-      } catch (err) {
-        console.error("Failed to accept:", err);
+      const { ok, error } = await setBookingStatus(selectedTable.bookingId, "confirmed");
+      if (!ok) {
+        console.error("Failed to accept:", error);
         toast.error("Failed to accept booking");
+        return;
       }
+      toast.success(`Accepted booking for ${selectedTable.label}`);
+      onAccept?.(selectedTable.id);
+      setSelectedTable(null);
     }
   };
 
   const handleDecline = async () => {
     if (selectedTable && selectedTable.bookingId) {
-      try {
-        const { error } = await supabase
-          .from("table_bookings")
-          .update({ status: "cancelled" })
-          .eq("id", selectedTable.bookingId);
-        
-        if (error) throw error;
-        toast.success(`Declined booking for ${selectedTable.label}`);
-        onDecline?.(selectedTable.id);
-        setSelectedTable(null);
-      } catch (err) {
-        console.error("Failed to decline:", err);
+      const { ok, error } = await setBookingStatus(selectedTable.bookingId, "cancelled");
+      if (!ok) {
+        console.error("Failed to decline:", error);
         toast.error("Failed to decline booking");
+        return;
       }
+      toast.success(`Declined booking for ${selectedTable.label}`);
+      onDecline?.(selectedTable.id);
+      setSelectedTable(null);
     }
   };
 

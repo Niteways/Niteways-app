@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { setBookingStatus } from "@/lib/bookingStatus";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -137,20 +138,16 @@ export function UserAppBookings({ onBack }: UserAppBookingsProps) {
 
   const handleCancelBooking = async (bookingId: string) => {
     setIsCancelling(true);
-    
-    const { error } = await supabase
-      .from('table_bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', bookingId);
 
-    if (error) {
+    const { ok, error } = await setBookingStatus(bookingId, 'cancelled');
+    if (!ok) {
       toast.error('Failed to cancel booking');
       console.error(error);
     } else {
       toast.success('Booking cancelled successfully');
       setSelectedBooking(null);
     }
-    
+
     setIsCancelling(false);
   };
 

@@ -10,6 +10,7 @@ import { GuestProfileModal } from "@/components/guests/GuestProfileModal";
 import { useTableSync } from "@/hooks/useTableSync";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { setBookingStatus } from "@/lib/bookingStatus";
 import {
   Table,
   TableBody,
@@ -242,23 +243,16 @@ const TableBookingRequests = () => {
 
   const handleAcceptTable = async (id: string) => {
     try {
-      // Get booking details first
       const { data: bookingData } = await supabase
         .from("table_bookings")
-        .select("*, venues:venue_id(name)")
+        .select("guest_name, guest_email, table_number, booking_date, booking_time, venues:venue_id(name)")
         .eq("id", id)
         .single();
 
-      // Update booking status to confirmed
-      const { error } = await supabase
-        .from("table_bookings")
-        .update({ status: "confirmed" })
-        .eq("id", id);
+      const { ok, error } = await setBookingStatus(id, "confirmed");
+      if (!ok) throw new Error(error || "Failed to accept booking");
 
-      if (error) throw error;
-
-      // Send notification to user
-      if (bookingData) {
+      if (bookingData?.guest_email) {
         try {
           await supabase.functions.invoke("booking-notification", {
             body: {
@@ -273,7 +267,7 @@ const TableBookingRequests = () => {
             },
           });
         } catch (notifError) {
-          console.warn("Notification failed but booking was confirmed:", notifError);
+          console.warn("Email notification failed (booking already confirmed):", notifError);
         }
       }
 
@@ -287,23 +281,16 @@ const TableBookingRequests = () => {
 
   const handleDeclineTable = async (id: string) => {
     try {
-      // Get booking details first
       const { data: bookingData } = await supabase
         .from("table_bookings")
-        .select("*, venues:venue_id(name)")
+        .select("guest_name, guest_email, table_number, booking_date, booking_time, venues:venue_id(name)")
         .eq("id", id)
         .single();
 
-      // Update to cancelled instead of deleting (so user sees it in their cancelled bookings)
-      const { error } = await supabase
-        .from("table_bookings")
-        .update({ status: "declined" })
-        .eq("id", id);
+      const { ok, error } = await setBookingStatus(id, "cancelled");
+      if (!ok) throw new Error(error || "Failed to decline booking");
 
-      if (error) throw error;
-
-      // Send notification to user
-      if (bookingData) {
+      if (bookingData?.guest_email) {
         try {
           await supabase.functions.invoke("booking-notification", {
             body: {
@@ -318,7 +305,7 @@ const TableBookingRequests = () => {
             },
           });
         } catch (notifError) {
-          console.warn("Notification failed but booking was declined:", notifError);
+          console.warn("Email notification failed (booking already cancelled):", notifError);
         }
       }
 

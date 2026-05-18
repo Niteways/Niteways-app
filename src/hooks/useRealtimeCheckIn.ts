@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { setBookingStatus } from "@/lib/bookingStatus";
 
 interface GuestEntry {
   id: string;
@@ -295,23 +296,16 @@ export function useRealtimeCheckIn(options: UseRealtimeCheckInOptions = {}) {
 
   // Check in a table booking
   const checkInTableBooking = useCallback(async (bookingId: string) => {
-    try {
-      const booking = tableBookings.find(b => b.id === bookingId);
-      if (!booking) return false;
+    const booking = tableBookings.find(b => b.id === bookingId);
+    if (!booking) return false;
 
-      const newStatus = booking.checkedIn ? "confirmed" : "checked_in";
-      
-      const { error } = await supabase
-        .from("table_bookings")
-        .update({ status: newStatus })
-        .eq("id", bookingId);
-
-      if (error) throw error;
-      return true;
-    } catch (error) {
+    const newStatus = booking.checkedIn ? "confirmed" : "checked_in";
+    const { ok, error } = await setBookingStatus(bookingId, newStatus);
+    if (!ok) {
       console.error("Error checking in booking:", error);
       return false;
     }
+    return true;
   }, [tableBookings]);
 
   // Set up real-time subscriptions

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, Alert, ActivityIndicator, StatusBar } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Button from '../components/Button';
-import { supabase } from '../config/supabase';
+import { setBookingStatus } from '../services/bookingStatus';
 
 const BookingDetailScreen = ({ navigation, route }: any) => {
     const { booking } = route.params;
@@ -19,18 +19,14 @@ const BookingDetailScreen = ({ navigation, route }: any) => {
                     style: 'destructive',
                     onPress: async () => {
                         setIsCancelling(true);
-                        try {
-                            const { error } = await supabase
-                                .from('table_bookings')
-                                .update({ status: 'cancelled' })
-                                .eq('id', booking.id);
-                            if (error) throw error;
-                            Alert.alert('Success', 'Booking cancelled successfully');
-                            navigation.goBack();
-                        } catch (error) {
-                            Alert.alert('Error', 'Failed to cancel booking');
+                        const { ok, error } = await setBookingStatus(booking.id, 'cancelled');
+                        if (!ok) {
+                            Alert.alert('Error', error || 'Failed to cancel booking');
                             setIsCancelling(false);
+                            return;
                         }
+                        Alert.alert('Success', 'Booking cancelled successfully');
+                        navigation.goBack();
                     }
                 }
             ]
