@@ -2,21 +2,27 @@
 -- Single source of truth for changing a booking's status across web + mobile.
 --   * Validates status against the canonical enum (no more `declined` vs `cancelled` drift)
 --   * Updates `table_bookings.status`
---   * Inserts a guest-facing row into `public.user_notifications` for confirmed / cancelled / checked_in
+--   * Inserts a guest-facing row into `public.user_notifications` for
+--     confirmed / cancelled / checked_in
 --   * Runs SECURITY DEFINER so the notification insert isn't blocked by RLS
---   * Authorises the caller via `public.can_manage_venue(venue_id)` (or platform admin)
+--   * Authorises the caller via `public.can_manage_venue(venue_id)` (or
+--     platform admin), with a self-cancel exception for the booking's own guest.
+--
+-- Uses RETURNS void + RECORD so the function definition does not depend on
+-- the `table_bookings` row-type existing at function-creation time (avoids
+-- 42704 when bootstrapping a fresh DB).
 
 CREATE OR REPLACE FUNCTION public.set_booking_status(
     p_booking_id uuid,
     p_status     text
 )
-RETURNS public.table_bookings
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_booking    public.table_bookings;
+    v_booking    record;
     v_user_id    uuid;
     v_user_email text;
     v_venue_name text;
@@ -32,8 +38,13 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    SELECT * INTO v_booking FROM public.table_bookings WHERE id = p_booking_id;
-    IF v_booking.id IS NULL THEN
+    SELECT id, venue_id, guest_id, guest_email, table_number,
+           booking_date, booking_time
+      INTO v_booking
+      FROM public.table_bookings
+     WHERE id = p_booking_id;
+
+    IF v_booking IS NULL OR v_booking.id IS NULL THEN
         RAISE EXCEPTION 'Booking not found: %', p_booking_id
             USING ERRCODE = 'P0002';
     END IF;
@@ -60,13 +71,11 @@ BEGIN
     UPDATE public.table_bookings
        SET status     = p_status,
            updated_at = now()
-     WHERE id = p_booking_id
-    RETURNING * INTO v_booking;
+     WHERE id = p_booking_id;
 
     v_notify := p_status IN ('confirmed', 'cancelled', 'checked_in');
 
     IF v_notify THEN
-        -- Resolve guest's auth user/email so the user app + portal bell pick the row up
         v_user_email := lower(coalesce(v_booking.guest_email, ''));
         IF v_user_email = '' THEN v_user_email := NULL; END IF;
 
@@ -116,12 +125,10 @@ BEGIN
                 user_id, user_email, title, message, type, related_id, is_read
             ) VALUES (
                 v_user_id, v_user_email, v_title, v_message,
-                'booking_' || p_status, v_booking.id, false
+                'booking_' || p_status, v_booking.id::text, false
             );
         END IF;
     END IF;
-
-    RETURN v_booking;
 END;
 $$;
 
@@ -129,7 +136,8 @@ REVOKE ALL ON FUNCTION public.set_booking_status(uuid, text) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.set_booking_status(uuid, text) TO authenticated;
 
 -- Push-notification seam: anything that wants to deliver pushes (FCM/Expo) can
--- LISTEN to `user_notifications_insert` (or replace this with a queue insert / pg_net call).
+-- LISTEN to `user_notifications_insert` (or replace this with a queue insert /
+-- pg_net call).
 CREATE OR REPLACE FUNCTION public.notify_user_notification_insert()
 RETURNS trigger
 LANGUAGE plpgsql
