@@ -60,18 +60,50 @@ export async function fetchVenueStaffProfiles(venueId: string): Promise<VenueSta
 export async function fetchProfileSummary(userId: string): Promise<{
     role: string | null;
     venue_id: string | null;
+    avatar_url: string | null;
 }> {
     const { data, error } = await supabase
         .from('profiles')
-        .select('role, venue_id')
+        .select('role, venue_id, avatar_url')
         .eq('id', userId)
         .maybeSingle();
 
     if (error) {
         console.warn('[venuePortal] fetchProfileSummary', error.message);
-        return { role: null, venue_id: null };
+        return { role: null, venue_id: null, avatar_url: null };
     }
-    return { role: data?.role ?? null, venue_id: data?.venue_id ?? null };
+    return {
+        role: data?.role ?? null,
+        venue_id: data?.venue_id ?? null,
+        avatar_url: data?.avatar_url ?? null,
+    };
+}
+
+/** Upload profile photo to public avatars bucket; returns public URL. */
+export async function uploadVenueProfileAvatarFromUri(
+    userId: string,
+    imageUri: string
+): Promise<{ url: string | null; error?: string }> {
+    try {
+        const match = /\.(\w+)(?:\?|$)/i.exec(imageUri);
+        const extRaw = match?.[1]?.toLowerCase();
+        const safeExt =
+            extRaw && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].includes(extRaw) ? extRaw : 'jpg';
+        const path = `profiles/${userId}-${Date.now()}.${safeExt}`;
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        const contentType = blob.type && blob.type.startsWith('image/') ? blob.type : `image/${safeExt}`;
+        const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, {
+            upsert: true,
+            contentType,
+        });
+        if (upErr) return { url: null, error: upErr.message };
+        const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+        return { url: data.publicUrl };
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Upload failed';
+        return { url: null, error: msg };
+    }
 }
 
 export async function resolveVenueForUser(userId: string): Promise<{

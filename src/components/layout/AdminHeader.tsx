@@ -36,10 +36,9 @@ const getInitials = (name: string): string => {
 export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
   const navigate = useNavigate();
   const { isImpersonating, impersonatedMember, impersonatedVenueId, stopImpersonation } = useImpersonation();
-  const { displayName, roleLabel } = useVenueProfile();
+  const { displayName, roleLabel, avatarUrl } = useVenueProfile();
   const { unreadCount } = usePortalNotificationUnreadCount();
 
-  const [profilePicture, setProfilePicture] = useState<string>("");
   const [venueName, setVenueName] = useState<string>("");
   const [venueShortId, setVenueShortId] = useState<string>("");
 
@@ -64,29 +63,6 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
       setVenueShortId("");
     }
   }, [isImpersonating, impersonatedVenueId]);
-
-  useEffect(() => {
-    const syncPicture = () => {
-      const savedPicture = localStorage.getItem("userProfilePicture");
-      setProfilePicture(savedPicture || "");
-    };
-    syncPicture();
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "userProfilePicture" && e.newValue !== null) {
-        setProfilePicture(e.newValue);
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-
-    const handleProfileUpdate = () => syncPicture();
-    window.addEventListener("profileUpdated", handleProfileUpdate);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("profileUpdated", handleProfileUpdate);
-    };
-  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -159,7 +135,7 @@ export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2 px-2">
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src={profilePicture} />
+                  <AvatarImage src={avatarUrl || undefined} />
                   <AvatarFallback className="bg-primary/20 text-primary text-sm">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="hidden md:block text-left">

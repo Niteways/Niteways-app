@@ -15,6 +15,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useNotifications } from "@/hooks/useNotifications";
 import { supabase } from "@/integrations/supabase/client";
 import { REQUIRE_VENUE_PORTAL_AUTH } from "@/config/deployMode";
+import { useVenueProfile } from "@/hooks/useVenueProfile";
 
 interface MobileHeaderProps {
   title: string;
@@ -42,13 +43,13 @@ const getInitials = (profile: UserProfileData): string => {
 export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
   const navigate = useNavigate();
   const { unreadCount } = useNotifications();
+  const { avatarUrl } = useVenueProfile();
   const isHomePage = title === "Dashboard" || title === "";
 
   const [profile, setProfile] = useState<UserProfileData>({
     name: "Guest User",
     role: "Manager",
   });
-  const [profilePicture, setProfilePicture] = useState<string>("");
 
   useEffect(() => {
     const load = () => {
@@ -60,8 +61,6 @@ export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
           // ignore
         }
       }
-      const savedPicture = localStorage.getItem("userProfilePicture");
-      if (savedPicture) setProfilePicture(savedPicture);
     };
 
     load();
@@ -73,9 +72,6 @@ export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
         } catch {
           // ignore
         }
-      }
-      if (e.key === "userProfilePicture" && e.newValue) {
-        setProfilePicture(e.newValue);
       }
     };
 
@@ -134,7 +130,7 @@ export function MobileHeader({ title, subtitle }: MobileHeaderProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9">
                 <Avatar className="w-7 h-7">
-                  <AvatarImage src={profilePicture} />
+                  <AvatarImage src={avatarUrl || undefined} />
                   <AvatarFallback className="bg-primary/20 text-primary text-xs">{initials}</AvatarFallback>
                 </Avatar>
               </Button>

@@ -16,13 +16,15 @@ import {
     useWindowDimensions,
 } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { authService } from '../../services/auth';
-import { fetchProfileSummary } from '../../services/venuePortal';
+import { fetchProfileSummary, uploadVenueProfileAvatarFromUri } from '../../services/venuePortal';
+import { supabase } from '../../config/supabase';
 import { VP } from './venuePortalTheme';
 import type { VenuePortalStackParamList, VenueProfileTab } from './venuePortalTypes';
 import { venuePortalSafeGoBack } from './venuePortalNavigation';
@@ -116,14 +118,16 @@ function initials(name: string): string {
     return 'GU';
 }
 
+/** Same label rules as the web venue portal (`formatRoleLabel`). */
 function roleDisplayLabel(
     profileRole: string | null,
     appRole: string | undefined
 ): string {
-    const r = profileRole || appRole;
-    if (r === 'venue_owner') return 'Manager';
+    const r = (profileRole || appRole || '').trim();
+    if (!r) return 'Venue owner';
+    if (r === 'venue_owner' || r === 'owner') return 'Venue owner';
     if (r === 'guest') return 'Guest';
-    return 'Member';
+    return r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function digitsOnly(s: string): string {
@@ -250,7 +254,7 @@ export default function VenueUserProfileScreen({ navigation, route }: Props) {
         email: 'john@nightflow.com',
         phone: '5550123456',
         phoneCountryId: 'US',
-        role: 'Manager',
+        role: 'Venue owner',
         loyaltyLevel: 'gold',
         totalCheckIns: 0,
         totalGuestsAdded: 0,
@@ -271,9 +275,11 @@ export default function VenueUserProfileScreen({ navigation, route }: Props) {
         const metaPhone = (u?.user_metadata?.mobile as string | undefined)?.trim();
 
         let profileRole: string | null = null;
+        let remoteAvatar: string | null = null;
         if (u?.id) {
             const sum = await fetchProfileSummary(u.id);
             profileRole = sum.role;
+            remoteAvatar = sum.avatar_url;
         }
 
         const rawP = await AsyncStorage.getItem(VENUE_PROFILE_STORAGE_KEY);
@@ -308,7 +314,13 @@ export default function VenueUserProfileScreen({ navigation, route }: Props) {
         }));
 
         const pic = await AsyncStorage.getItem(AVATAR_KEY);
-        if (pic) setAvatarUri(pic);
+        const urlFromDb = (remoteAvatar || '').trim();
+        if (urlFromDb) {
+            setAvatarUri(urlFromDb);
+            await AsyncStorage.setItem(AVATAR_KEY, urlFromDb);
+        } else if (pic) {
+            setAvatarUri(pic);
+        }
 
         const rawM = await AsyncStorage.getItem(VENUE_MENU_STORAGE_KEY);
         if (rawM) {
@@ -324,6 +336,13 @@ export default function VenueUserProfileScreen({ navigation, route }: Props) {
         hydrate();
     }, [hydrate]);
 
+    // Re-pull avatar_url + role on focus so a photo set on the web portal appears immediately.
+    useFocusEffect(
+        useCallback(() => {
+            hydrate();
+        }, [hydrate])
+    );
+
     const saveProfile = async () => {
         const country = getPhoneCountry(userData.phoneCountryId);
         const phoneDigits = digitsOnly(userData.phone);
@@ -337,8 +356,22 @@ export default function VenueUserProfileScreen({ navigation, route }: Props) {
         const mobileMeta = formatMobileForMetadata(country, phoneDigits);
         const toSave = { ...userData, phone: phoneDigits, phoneCountryId: country.id };
         try {
+            const u = await authService.getStoredUser();
+            let finalAvatarUri = avatarUri.trim();
+
+            if (u?.id && finalAvatarUri && !/^https?:\/\//i.test(finalAvatarUri)) {
+                const up = await uploadVenueProfileAvatarFromUri(u.id, finalAvatarUri);
+                if (!up.url) {
+                    Alert.alert('Photo', up.error || 'Could not upload profile photo.');
+                    return;
+                }
+                finalAvatarUri = up.url;
+                setAvatarUri(finalAvatarUri);
+            }
+
             await AsyncStorage.setItem(VENUE_PROFILE_STORAGE_KEY, JSON.stringify(toSave));
-            if (avatarUri) await AsyncStorage.setItem(AVATAR_KEY, avatarUri);
+            if (finalAvatarUri) await AsyncStorage.setItem(AVATAR_KEY, finalAvatarUri);
+
             const parts = userData.name.trim().split(/\s+/);
             const firstName = parts[0] || '';
             const lastName = parts.slice(1).join(' ') || '';
@@ -348,6 +381,27 @@ export default function VenueUserProfileScreen({ navigation, route }: Props) {
                 email: toSave.email,
                 mobile: mobileMeta,
             });
+
+            if (u?.id) {
+                const sum = await fetchProfileSummary(u.id);
+                const payload = {
+                    id: u.id,
+                    full_name: userData.name.trim(),
+                    email: toSave.email || u.email || null,
+                    role: sum.role ?? 'guest',
+                    venue_id: sum.venue_id,
+                    updated_at: new Date().toISOString(),
+                    ...(/^https?:\/\//i.test(finalAvatarUri) ? { avatar_url: finalAvatarUri } : {}),
+                };
+                const { error: pErr } = await supabase.from('profiles').upsert(payload, {
+                    onConflict: 'id',
+                });
+                if (pErr) {
+                    Alert.alert('Profile', pErr.message || 'Could not sync profile to server.');
+                    return;
+                }
+            }
+
             await hydrate();
             Alert.alert('Saved', 'Profile updated.');
         } catch (e: any) {

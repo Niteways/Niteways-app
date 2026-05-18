@@ -15,6 +15,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatRoleLabel } from "@/hooks/useVenueProfile";
+import { uploadVenuePortalProfileAvatarFile } from "@/lib/venuePortalProfileAvatar";
 import {
   Select,
   SelectContent,
@@ -122,7 +123,6 @@ const UserProfile = () => {
 
     const load = async () => {
       const savedPicture = localStorage.getItem("userProfilePicture");
-      if (savedPicture) setProfilePicture(savedPicture);
 
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
@@ -144,9 +144,17 @@ const UserProfile = () => {
 
       const { data: prof } = await supabase
         .from("profiles")
-        .select("full_name, email, role, venue_id, created_at")
+        .select("full_name, email, role, venue_id, created_at, avatar_url")
         .eq("id", u.id)
         .maybeSingle();
+
+      const fromDbAvatar = (prof?.avatar_url || "").trim();
+      if (fromDbAvatar) {
+        setProfilePicture(fromDbAvatar);
+        localStorage.setItem("userProfilePicture", fromDbAvatar);
+      } else if (savedPicture) {
+        setProfilePicture(savedPicture);
+      }
 
       let venueName = "";
       if (prof?.venue_id) {
@@ -217,6 +225,7 @@ const UserProfile = () => {
           email: emailTrim || u.email || null,
           role: userData.role || "guest",
           updated_at: new Date().toISOString(),
+          ...(profilePicture.startsWith("http") ? { avatar_url: profilePicture } : {}),
         },
         { onConflict: "id" }
       );
@@ -225,7 +234,9 @@ const UserProfile = () => {
         return;
       }
 
-      localStorage.setItem("userProfilePicture", profilePicture);
+      if (profilePicture.startsWith("http") || profilePicture.startsWith("data:")) {
+        localStorage.setItem("userProfilePicture", profilePicture);
+      }
       const first = nameTrim.split(/\s+/)[0] ?? "";
       const last = nameTrim.split(/\s+/).slice(1).join(" ");
       localStorage.setItem(
@@ -323,19 +334,43 @@ const UserProfile = () => {
     desktopFileRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setProfilePicture(base64);
-        localStorage.setItem("userProfilePicture", base64);
-        toast.success("Profile picture updated locally.");
-      };
-      reader.readAsDataURL(file);
-    }
     e.target.value = "";
+    if (!file) return;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData.session?.user?.id;
+    if (!uid) {
+      toast.error("Sign in to update your photo.");
+      return;
+    }
+
+    const { url, error } = await uploadVenuePortalProfileAvatarFile(supabase, uid, file);
+    if (error || !url) {
+      toast.error(error || "Upload failed.");
+      return;
+    }
+
+    setProfilePicture(url);
+    localStorage.setItem("userProfilePicture", url);
+
+    const { error: pErr } = await supabase.from("profiles").upsert(
+      {
+        id: uid,
+        avatar_url: url,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+
+    if (pErr) {
+      toast.error(pErr.message);
+      return;
+    }
+
+    toast.success("Profile photo saved — it will show on your venue app.");
+    window.dispatchEvent(new CustomEvent("profileUpdated"));
   };
 
   if (isMobile) {

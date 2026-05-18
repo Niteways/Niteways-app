@@ -8,13 +8,17 @@ import {
     Pressable,
     Platform,
     Dimensions,
+    Image,
 } from 'react-native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../../services/auth';
+import { fetchProfileSummary } from '../../services/venuePortal';
 import { VP } from './venuePortalTheme';
 import type { VenuePortalStackParamList } from './venuePortalTypes';
+
+const AVATAR_KEY = '@venue_owner_avatar_v1';
 
 export const VENUE_PROFILE_STORAGE_KEY = '@venue_owner_profile_v1';
 
@@ -63,9 +67,10 @@ export function VenueProfileTray({
 }) {
     const avatarRef = useRef<View>(null);
     const [user, setUser] = useState<any>(null);
-    const [roleLabel, setRoleLabel] = useState('Manager');
+    const [roleLabel, setRoleLabel] = useState('Venue owner');
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+    const [avatarUri, setAvatarUri] = useState<string>('');
 
     const refreshUser = useCallback(async () => {
         const u = await authService.getStoredUser();
@@ -77,6 +82,32 @@ export function VenueProfileTray({
                 if (typeof p.role === 'string' && p.role) setRoleLabel(p.role);
             } catch {
                 /* ignore */
+            }
+        }
+
+        // Local cached URI shows instantly while Supabase round-trip runs
+        const cached = await AsyncStorage.getItem(AVATAR_KEY);
+        if (cached) setAvatarUri(cached);
+
+        if (u?.id) {
+            try {
+                const sum = await fetchProfileSummary(u.id);
+                const dbUrl = (sum.avatar_url || '').trim();
+                if (dbUrl) {
+                    setAvatarUri(dbUrl);
+                    await AsyncStorage.setItem(AVATAR_KEY, dbUrl);
+                } else if (cached && /^https?:\/\//i.test(cached)) {
+                    // DB cleared but cache had a URL — drop stale cache
+                    setAvatarUri('');
+                    await AsyncStorage.removeItem(AVATAR_KEY);
+                }
+                // Same label rules as web (`formatRoleLabel`) so portal & app match.
+                const dbRole = (sum.role || '').trim();
+                if (dbRole === 'venue_owner' || dbRole === 'owner') setRoleLabel('Venue owner');
+                else if (dbRole === 'guest') setRoleLabel('Guest');
+                else if (dbRole) setRoleLabel(dbRole.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+            } catch {
+                /* network/RLS issues: keep cached value */
             }
         }
     }, []);
@@ -150,7 +181,11 @@ export function VenueProfileTray({
                         activeOpacity={0.85}
                     >
                         <View style={[styles.avatar, isTicketing && styles.avatarTicketing]}>
-                            <Text style={[styles.avatarText, isTicketing && styles.avatarTextTicketing]}>{ini}</Text>
+                            {avatarUri ? (
+                                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                            ) : (
+                                <Text style={[styles.avatarText, isTicketing && styles.avatarTextTicketing]}>{ini}</Text>
+                            )}
                         </View>
                     </TouchableOpacity>
                 </View>
@@ -267,6 +302,11 @@ const styles = StyleSheet.create({
         color: VP.gold,
         fontSize: 14,
         fontWeight: '800',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 20,
     },
     avatarTicketing: {
         backgroundColor: '#FFD700',

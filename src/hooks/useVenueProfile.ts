@@ -32,6 +32,11 @@ function readLocalProfileName(): string | null {
   }
 }
 
+function readLegacyStoredAvatar(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("userProfilePicture") || "";
+}
+
 function readLocalProfileRole(): string | null {
   const raw = localStorage.getItem("userProfileData");
   if (!raw) return null;
@@ -57,13 +62,14 @@ function displayFromAuthUser(user: User | null): { name: string; role: string } 
 }
 
 /**
- * Venue portal: `public.profiles` row for the signed-in user (full_name, role, venue_id),
+ * Venue portal: `public.profiles` row for the signed-in user (full_name, role, venue_id, avatar_url),
  * with sensible fallbacks to auth metadata and ProfileSettings localStorage.
  */
 export function useVenueProfile() {
   const [displayName, setDisplayName] = useState<string>("");
   const [roleLabel, setRoleLabel] = useState<string>("Venue owner");
   const [venueId, setVenueId] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   const resolveForUser = useCallback(async (user: User | null) => {
@@ -71,6 +77,7 @@ export function useVenueProfile() {
       setDisplayName("");
       setRoleLabel("Manager");
       setVenueId(null);
+      setAvatarUrl("");
       setLoading(false);
       return;
     }
@@ -78,7 +85,7 @@ export function useVenueProfile() {
     setLoading(true);
     const { data: row, error } = await supabase
       .from("profiles")
-      .select("full_name, email, role, venue_id")
+      .select("full_name, email, role, venue_id, avatar_url")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -105,9 +112,14 @@ export function useVenueProfile() {
       (fromAuth?.role || "") ||
       "Venue owner";
 
+    const remoteAvatar = (row?.avatar_url || "").trim();
+    const legacy = readLegacyStoredAvatar();
+    const avatar = remoteAvatar || (legacy.startsWith("http") ? legacy : "");
+
     setDisplayName(name);
     setRoleLabel(role || "Venue owner");
     setVenueId(row?.venue_id ?? null);
+    setAvatarUrl(avatar);
     setLoading(false);
   }, []);
 
@@ -145,5 +157,5 @@ export function useVenueProfile() {
     };
   }, [resolveForUser]);
 
-  return { displayName, roleLabel, venueId, loading };
+  return { displayName, roleLabel, venueId, avatarUrl, loading };
 }

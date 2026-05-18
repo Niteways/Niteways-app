@@ -1,18 +1,39 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { authService } from '../services/auth';
+import { withTimeout } from '../utils/withTimeout';
 
 const MIN_SPLASH_MS = 1800;
 const AUTH_CHECK_TIMEOUT_MS = 8000;
+const CACHE_REFRESH_TIMEOUT_MS = 14000;
+const GET_ROLE_TIMEOUT_MS = 20000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+function raceWithFallback<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
     return Promise.race([
         promise,
         new Promise<T>((resolve) => {
             setTimeout(() => resolve(fallback), ms);
         }),
     ]);
+}
+
+async function getRoleAfterSplash(): Promise<'guest' | 'venue_owner'> {
+    try {
+        return await withTimeout(authService.getAppRole(), GET_ROLE_TIMEOUT_MS, 'role timeout');
+    } catch {
+        try {
+            const raw = await AsyncStorage.getItem('user');
+            if (raw) {
+                const c = JSON.parse(raw) as { app_role?: string };
+                if (c.app_role === 'venue_owner') return 'venue_owner';
+            }
+        } catch {
+            /* ignore */
+        }
+        return 'guest';
+    }
 }
 
 const SplashScreen = ({ navigation }: any) => {
@@ -33,7 +54,7 @@ const SplashScreen = ({ navigation }: any) => {
         const run = async () => {
             const startedAt = Date.now();
             try {
-                const isAuth = await withTimeout(
+                const isAuth = await raceWithFallback(
                     authService.isAuthenticated(),
                     AUTH_CHECK_TIMEOUT_MS,
                     false,
@@ -42,11 +63,15 @@ const SplashScreen = ({ navigation }: any) => {
 
                 if (isAuth) {
                     try {
-                        await authService.refreshUserCache();
+                        await withTimeout(
+                            authService.refreshUserCache(),
+                            CACHE_REFRESH_TIMEOUT_MS,
+                            'cache refresh timed out',
+                        );
                     } catch {
                         /* offline / Supabase issues — still route by session */
                     }
-                    const role = await authService.getAppRole();
+                    const role = await getRoleAfterSplash();
                     if (cancelled) return;
                     const target = role === 'venue_owner' ? 'VenuePortal' : 'Main';
                     const wait = Math.max(0, MIN_SPLASH_MS - (Date.now() - startedAt));

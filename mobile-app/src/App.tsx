@@ -54,12 +54,13 @@ import VenueDetailScreen from './screens/VenueDetailScreen';
 import FavoritesScreen from './screens/FavoritesScreen';
 import { NotificationProvider } from './context/NotificationContext';
 import { FavoritesProvider } from './context/FavoritesContext';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 const Stack = createStackNavigator();
 
 function App(): React.JSX.Element {
     return (
-        <>
+        <AppErrorBoundary>
             <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
             <SafeAreaProvider>
             <NavigationContainer>
@@ -110,7 +111,7 @@ function App(): React.JSX.Element {
                 </NotificationProvider>
             </NavigationContainer>
             </SafeAreaProvider>
-        </>
+        </AppErrorBoundary>
     );
 }
 

@@ -1,6 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
 import { createVenueAndLinkProfile, ensureVenueFromSignupMetadata } from './venuePortal';
+import { withTimeout } from '../utils/withTimeout';
+
+const SIGN_IN_AUTH_TIMEOUT_MS = 32000;
+const SIGN_IN_SYNC_TIMEOUT_MS = 18000;
+const GET_ROLE_SYNC_TIMEOUT_MS = 16000;
 
 export type AppRole = 'guest' | 'venue_owner';
 
@@ -144,37 +149,88 @@ export const authService = {
     },
 
     async signIn(email: string, password: string): Promise<any> {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        if (__DEV__) {
+            // Helps verify the native bundle picked up react-native-config values (requires rebuild after editing .env).
+            console.warn('[authService.signIn] Supabase URL:', supabase.supabaseUrl);
+        }
+
+        const { data, error } = await withTimeout(
+            supabase.auth.signInWithPassword({
+                email,
+                password,
+            }),
+            SIGN_IN_AUTH_TIMEOUT_MS,
+            'Cannot reach the server (timed out). Check internet, confirm mobile-app/.env has the correct SUPABASE_URL and SUPABASE_ANON_KEY, then rebuild the native app (not just Metro refresh).'
+        );
 
         if (error) throw error;
 
         if (data.user) {
-            await syncAndStoreUser(data.user);
+            try {
+                await withTimeout(
+                    syncAndStoreUser(data.user),
+                    SIGN_IN_SYNC_TIMEOUT_MS,
+                    'Profile sync timed out.'
+                );
+            } catch (syncErr: unknown) {
+                const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+                console.warn('[authService.signIn] syncAndStoreUser:', msg);
+                const metaRole = data.user.user_metadata?.role;
+                const fallback: AppRole = metaRole === 'venue_owner' ? 'venue_owner' : 'guest';
+                await AsyncStorage.setItem(
+                    'user',
+                    JSON.stringify({
+                        ...data.user,
+                        app_role: fallback,
+                        app_venue_id: null,
+                    })
+                );
+            }
         }
 
         return data;
     },
 
     async getAppRole(): Promise<AppRole> {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+            data: { session },
+        } = await supabase.auth.getSession();
         if (!session?.user) return 'guest';
 
         const raw = await AsyncStorage.getItem('user');
         if (raw) {
-            const cached = JSON.parse(raw);
-            if (cached.id === session.user.id && cached.app_role === 'venue_owner') {
-                return 'venue_owner';
+            try {
+                const cached = JSON.parse(raw);
+                if (
+                    cached.id === session.user.id &&
+                    (cached.app_role === 'venue_owner' || cached.app_role === 'guest')
+                ) {
+                    return cached.app_role;
+                }
+            } catch {
+                /* ignore */
             }
         }
 
-        await syncAndStoreUser(session.user);
+        try {
+            await withTimeout(
+                syncAndStoreUser(session.user),
+                GET_ROLE_SYNC_TIMEOUT_MS,
+                'getAppRole sync timed out'
+            );
+        } catch (e: unknown) {
+            console.warn('[authService.getAppRole]', e);
+            return session.user.user_metadata?.role === 'venue_owner' ? 'venue_owner' : 'guest';
+        }
+
         const raw2 = await AsyncStorage.getItem('user');
         if (raw2) {
-            const c = JSON.parse(raw2);
-            if (c.app_role === 'venue_owner') return 'venue_owner';
+            try {
+                const c = JSON.parse(raw2);
+                if (c.app_role === 'venue_owner') return 'venue_owner';
+            } catch {
+                /* ignore */
+            }
         }
         return 'guest';
     },
