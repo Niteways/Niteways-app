@@ -1,16 +1,19 @@
--- Tier 1 sync — table bookings
--- Single source of truth for changing a booking's status across web + mobile.
---   * Validates status against the canonical enum (no more `declined` vs `cancelled` drift)
---   * Updates `table_bookings.status`
---   * Inserts a guest-facing row into `public.user_notifications` for
---     confirmed / cancelled / checked_in
---   * Runs SECURITY DEFINER so the notification insert isn't blocked by RLS
---   * Authorises the caller via `public.can_manage_venue(venue_id)` (or
---     platform admin), with a self-cancel exception for the booking's own guest.
+-- =============================================================================
+-- Tier 1 step 3 — hotfix: make set_booking_status() idempotent
+-- =============================================================================
+-- Production smoke test showed a double-click on "Accept" can produce two
+-- `user_notifications` rows because the RPC unconditionally inserts on every
+-- call. This patch guards the UPDATE with `status IS DISTINCT FROM p_status`
+-- and short-circuits when no row actually changed, so:
 --
--- Uses RETURNS void + RECORD so the function definition does not depend on
--- the `table_bookings` row-type existing at function-creation time (avoids
--- 42704 when bootstrapping a fresh DB).
+--   * A second call with the same status is a no-op (no extra notification).
+--   * Idempotent retries from a flaky network become safe.
+--   * Real transitions (pending → confirmed, confirmed → cancelled, etc.)
+--     still write + notify exactly once.
+--
+-- Apply once on the production project (ref: swbjxienxrptmawsdugv) via the
+-- Supabase SQL editor. Safe to re-run.
+-- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.set_booking_status(
     p_booking_id uuid,
@@ -50,8 +53,6 @@ BEGIN
             USING ERRCODE = 'P0002';
     END IF;
 
-    -- Authorisation: venue staff/owner OR platform admin can flip any status;
-    --                the booking's guest themselves can only cancel their own booking.
     IF NOT (
         public.can_manage_venue(v_booking.venue_id)
         OR public.is_platform_admin(auth.uid())
@@ -70,7 +71,6 @@ BEGIN
     END IF;
 
     -- Idempotent: only write + notify when the status actually changes.
-    -- (A double-click on Accept should not produce two notification rows.)
     UPDATE public.table_bookings
        SET status     = p_status,
            updated_at = now()
@@ -90,15 +90,13 @@ BEGIN
 
         IF v_booking.guest_id IS NOT NULL THEN
             SELECT lower(g.email) INTO v_user_email
-              FROM public.guests g
-             WHERE g.id = v_booking.guest_id;
+              FROM public.guests g WHERE g.id = v_booking.guest_id;
         END IF;
 
         IF v_user_email IS NOT NULL THEN
             SELECT p.id INTO v_user_id
               FROM public.profiles p
-             WHERE lower(p.email) = v_user_email
-             LIMIT 1;
+             WHERE lower(p.email) = v_user_email LIMIT 1;
         END IF;
 
         SELECT name INTO v_venue_name FROM public.venues WHERE id = v_booking.venue_id;
@@ -106,23 +104,21 @@ BEGIN
 
         CASE p_status
             WHEN 'confirmed' THEN
-                v_title   := 'Booking confirmed';
+                v_title := 'Booking confirmed';
                 v_message := format(
                     '%s confirmed your table %s on %s at %s.',
-                    v_venue_name,
-                    v_booking.table_number,
+                    v_venue_name, v_booking.table_number,
                     to_char(v_booking.booking_date, 'YYYY-MM-DD'),
                     v_booking.booking_time
                 );
             WHEN 'cancelled' THEN
-                v_title   := 'Booking cancelled';
+                v_title := 'Booking cancelled';
                 v_message := format(
                     'Your table booking at %s for %s was cancelled.',
-                    v_venue_name,
-                    to_char(v_booking.booking_date, 'YYYY-MM-DD')
+                    v_venue_name, to_char(v_booking.booking_date, 'YYYY-MM-DD')
                 );
             WHEN 'checked_in' THEN
-                v_title   := 'Checked in';
+                v_title := 'Checked in';
                 v_message := format(
                     'You are checked in at %s. Enjoy your night!',
                     v_venue_name
@@ -143,33 +139,5 @@ $$;
 
 REVOKE ALL ON FUNCTION public.set_booking_status(uuid, text) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.set_booking_status(uuid, text) TO authenticated;
-
--- Push-notification seam: anything that wants to deliver pushes (FCM/Expo) can
--- LISTEN to `user_notifications_insert` (or replace this with a queue insert /
--- pg_net call).
-CREATE OR REPLACE FUNCTION public.notify_user_notification_insert()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    PERFORM pg_notify(
-        'user_notifications_insert',
-        json_build_object(
-            'id',         NEW.id,
-            'user_id',    NEW.user_id,
-            'user_email', NEW.user_email,
-            'title',      NEW.title,
-            'type',       NEW.type,
-            'related_id', NEW.related_id
-        )::text
-    );
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_user_notifications_insert ON public.user_notifications;
-CREATE TRIGGER trg_user_notifications_insert
-AFTER INSERT ON public.user_notifications
-FOR EACH ROW EXECUTE FUNCTION public.notify_user_notification_insert();
 
 NOTIFY pgrst, 'reload schema';

@@ -358,13 +358,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_booking    record;
-    v_user_id    uuid;
-    v_user_email text;
-    v_venue_name text;
-    v_title      text;
-    v_message    text;
-    v_notify     boolean;
+    v_booking      record;
+    v_user_id      uuid;
+    v_user_email   text;
+    v_venue_name   text;
+    v_title        text;
+    v_message      text;
+    v_notify       boolean;
+    v_changed_rows integer;
 BEGIN
     IF p_status NOT IN (
         'pending', 'confirmed', 'cancelled', 'checked_in',
@@ -402,10 +403,18 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
+    -- Idempotent: only write + notify when the status actually changes.
+    -- (A double-click on Accept should not produce two notification rows.)
     UPDATE public.table_bookings
        SET status = p_status,
            updated_at = now()
-     WHERE id = p_booking_id;
+     WHERE id = p_booking_id
+       AND status IS DISTINCT FROM p_status;
+
+    GET DIAGNOSTICS v_changed_rows = ROW_COUNT;
+    IF v_changed_rows = 0 THEN
+        RETURN;
+    END IF;
 
     v_notify := p_status IN ('confirmed', 'cancelled', 'checked_in');
 

@@ -87,8 +87,14 @@ import VenueLogin from "./pages/VenueLogin";
 import AuthCallback from "./pages/AuthCallback";
 import { VenuePortalGate } from "@/components/auth/VenuePortalGate";
 import { RecoveryHashRedirect } from "@/components/auth/RecoveryHashRedirect";
+import { initPortalVenueScope } from "@/lib/portalVenueScopeInit";
 
 const queryClient = new QueryClient();
+
+// Auto-resolve the signed-in user's venue into sessionStorage so legacy
+// getPortalScopeVenueId() reads stay venue-correct (no more ?venue_id= hint
+// required for venue owners / team members).
+initPortalVenueScope();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

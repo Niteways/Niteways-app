@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { setBookingStatus } from "@/lib/bookingStatus";
 import { subscribeToTables } from "@/lib/realtime";
 import { isMissingSchemaTableError } from "@/lib/supabasePostgrestErrors";
+import { notifyGuestById } from "@/lib/notifyGuest";
 
 interface GuestEntry {
   id: string;
@@ -281,17 +282,27 @@ export function useRealtimeCheckIn(options: UseRealtimeCheckInOptions = {}) {
     }
   }, [oneDayGuests]);
 
-  // Check in a guest list entry
+  // Check in a guest list entry (also fires a `user_notifications` row when
+  // the entry is linked to a `guests` record with an email — otherwise the
+  // notification is silently skipped, since door check-ins for anonymous
+  // walk-in entries don't have anyone to notify.)
   const checkInGuestListEntry = useCallback(async (guestId: string) => {
     try {
       const guest = guestListEntries.find(g => g.id === guestId);
       if (!guest) return false;
 
       const newCheckedIn = !guest.checkedIn;
-      
+
+      const { data: entry, error: fetchErr } = await supabase
+        .from("guest_list_entries")
+        .select("guest_id, venue_id")
+        .eq("id", guestId)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+
       const { error } = await supabase
         .from("guest_list_entries")
-        .update({ 
+        .update({
           checked_in: newCheckedIn,
           check_in_time: newCheckedIn ? new Date().toISOString() : null,
           status: newCheckedIn ? "checked_in" : "pending"
@@ -299,6 +310,21 @@ export function useRealtimeCheckIn(options: UseRealtimeCheckInOptions = {}) {
         .eq("id", guestId);
 
       if (error) throw error;
+
+      if (newCheckedIn && entry?.guest_id) {
+        let venueName = "the venue";
+        if (entry.venue_id) {
+          const { data: v } = await supabase
+            .from("venues").select("name").eq("id", entry.venue_id).maybeSingle();
+          if (v?.name) venueName = v.name;
+        }
+        void notifyGuestById(entry.guest_id, {
+          title: "Checked in",
+          message: `You are checked in at ${venueName}. Enjoy your night!`,
+          type: "guest_checked_in",
+          relatedId: guestId,
+        });
+      }
       return true;
     } catch (error) {
       console.error("Error checking in guest:", error);
