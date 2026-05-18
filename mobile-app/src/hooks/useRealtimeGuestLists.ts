@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../config/supabase';
 import { isMissingSchemaTableError } from '../utils/supabasePostgrestErrors';
+import { subscribeToTables } from '../services/realtime';
 
 export interface RecurringListGuest {
     id: string;
@@ -621,54 +622,41 @@ export function useRealtimeGuestLists(options: UseRealtimeGuestListsOptions) {
             return () => {};
         }
 
-        const recurringListsChannel = supabase
-            .channel(`rn-recurring-guest-lists-${activeVenueId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
+        const refresh = () => void fetchLists();
+        const unsub = subscribeToTables([
+            {
+                options: {
+                    channel: `rn-recurring-guest-lists-${activeVenueId}`,
                     table: 'recurring_guest_lists',
                     filter: `venue_id=eq.${activeVenueId}`,
                 },
-                () => fetchLists()
-            )
-            .subscribe();
-
-        const recurringGuestsChannel = supabase
-            .channel(`rn-recurring-list-guests-${activeVenueId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring_list_guests' }, () =>
-                fetchLists()
-            )
-            .subscribe();
-
-        const oneDayListsChannel = supabase
-            .channel(`rn-one-day-guest-lists-${activeVenueId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
+                onChange: refresh,
+            },
+            {
+                options: {
+                    channel: `rn-recurring-list-guests-${activeVenueId}`,
+                    table: 'recurring_list_guests',
+                },
+                onChange: refresh,
+            },
+            {
+                options: {
+                    channel: `rn-one-day-guest-lists-${activeVenueId}`,
                     table: 'one_day_guest_lists',
                     filter: `venue_id=eq.${activeVenueId}`,
                 },
-                () => fetchLists()
-            )
-            .subscribe();
+                onChange: refresh,
+            },
+            {
+                options: {
+                    channel: `rn-one-day-list-guests-${activeVenueId}`,
+                    table: 'one_day_list_guests',
+                },
+                onChange: refresh,
+            },
+        ]);
 
-        const oneDayGuestsChannel = supabase
-            .channel(`rn-one-day-list-guests-${activeVenueId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'one_day_list_guests' }, () =>
-                fetchLists()
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(recurringListsChannel);
-            supabase.removeChannel(recurringGuestsChannel);
-            supabase.removeChannel(oneDayListsChannel);
-            supabase.removeChannel(oneDayGuestsChannel);
-        };
+        return unsub;
     }, [fetchLists, activeVenueId]);
 
     const allLists = [...recurringLists, ...oneDayLists];

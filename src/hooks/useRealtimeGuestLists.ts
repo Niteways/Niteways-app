@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { subscribeToTables } from "@/lib/realtime";
+import { isMissingSchemaTableError } from "@/lib/supabasePostgrestErrors";
 
 interface RecurringListGuest {
   id: string;
@@ -247,7 +249,13 @@ export function useRealtimeGuestLists(options: UseRealtimeGuestListsOptions) {
       setRecurringLists(formattedRecurring);
       setOneDayLists(formattedOneDay);
     } catch (error) {
-      console.error("Error fetching guest lists:", error);
+      // Graceful degrade: production Supabase may not yet have the guest-list tables.
+      if (isMissingSchemaTableError(error)) {
+        setRecurringLists([]);
+        setOneDayLists([]);
+      } else {
+        console.error("Error fetching guest lists:", error);
+      }
     } finally {
       setLoading(false);
     }
@@ -615,48 +623,45 @@ export function useRealtimeGuestLists(options: UseRealtimeGuestListsOptions) {
     }
   }, []);
 
-  // Set up real-time subscriptions - scoped to active venue
+  // Set up real-time subscriptions - scoped to active venue (mirrors the mobile hook)
   useEffect(() => {
     fetchLists();
 
-    // Subscribe to changes on recurring_guest_lists (venue-scoped channel)
-    const recurringListsChannel = supabase
-      .channel(`recurring-guest-lists-${activeVenueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "recurring_guest_lists", filter: `venue_id=eq.${activeVenueId}` },
-        () => fetchLists()
-      )
-      .subscribe();
+    const refresh = () => void fetchLists();
+    const unsub = subscribeToTables([
+      {
+        options: {
+          channel: `recurring-guest-lists-${activeVenueId}`,
+          table: "recurring_guest_lists",
+          filter: `venue_id=eq.${activeVenueId}`,
+        },
+        onChange: refresh,
+      },
+      {
+        options: {
+          channel: `recurring-list-guests-${activeVenueId}`,
+          table: "recurring_list_guests",
+        },
+        onChange: refresh,
+      },
+      {
+        options: {
+          channel: `one-day-guest-lists-${activeVenueId}`,
+          table: "one_day_guest_lists",
+          filter: `venue_id=eq.${activeVenueId}`,
+        },
+        onChange: refresh,
+      },
+      {
+        options: {
+          channel: `one-day-list-guests-${activeVenueId}`,
+          table: "one_day_list_guests",
+        },
+        onChange: refresh,
+      },
+    ]);
 
-    // Subscribe to changes on recurring_list_guests
-    const recurringGuestsChannel = supabase
-      .channel(`recurring-list-guests-${activeVenueId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "recurring_list_guests" }, () => fetchLists())
-      .subscribe();
-
-    // Subscribe to changes on one_day_guest_lists (venue-scoped channel)
-    const oneDayListsChannel = supabase
-      .channel(`one-day-guest-lists-${activeVenueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "one_day_guest_lists", filter: `venue_id=eq.${activeVenueId}` },
-        () => fetchLists()
-      )
-      .subscribe();
-
-    // Subscribe to changes on one_day_list_guests
-    const oneDayGuestsChannel = supabase
-      .channel(`one-day-list-guests-${activeVenueId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "one_day_list_guests" }, () => fetchLists())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(recurringListsChannel);
-      supabase.removeChannel(recurringGuestsChannel);
-      supabase.removeChannel(oneDayListsChannel);
-      supabase.removeChannel(oneDayGuestsChannel);
-    };
+    return unsub;
   }, [fetchLists, activeVenueId]);
 
   // Reset a recurring guest list (delete non-sticky guests, preserve sticky, update timestamp)

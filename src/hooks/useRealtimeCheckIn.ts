@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { setBookingStatus } from "@/lib/bookingStatus";
+import { subscribeToTables } from "@/lib/realtime";
+import { isMissingSchemaTableError } from "@/lib/supabasePostgrestErrors";
 
 interface GuestEntry {
   id: string;
@@ -209,7 +211,17 @@ export function useRealtimeCheckIn(options: UseRealtimeCheckInOptions = {}) {
       setRecurringLists(Array.from(uniqueRecurringLists.values()));
       setOneDayLists(Array.from(uniqueOneDayLists.values()));
     } catch (error) {
-      console.error("Error fetching check-in data:", error);
+      // Graceful degrade: production Supabase may not yet have guest-list/check-in tables.
+      if (isMissingSchemaTableError(error)) {
+        setRecurringGuests([]);
+        setOneDayGuests([]);
+        setGuestListEntries([]);
+        setTableBookings([]);
+        setRecurringLists([]);
+        setOneDayLists([]);
+      } else {
+        console.error("Error fetching check-in data:", error);
+      }
     } finally {
       setLoading(false);
     }
@@ -312,32 +324,15 @@ export function useRealtimeCheckIn(options: UseRealtimeCheckInOptions = {}) {
   useEffect(() => {
     fetchData();
 
-    const recurringChannel = supabase
-      .channel("checkin-recurring-guests")
-      .on("postgres_changes", { event: "*", schema: "public", table: "recurring_list_guests" }, () => fetchData())
-      .subscribe();
+    const refresh = () => void fetchData();
+    const unsub = subscribeToTables([
+      { options: { channel: "checkin-recurring-guests", table: "recurring_list_guests" }, onChange: refresh },
+      { options: { channel: "checkin-oneday-guests",    table: "one_day_list_guests"  }, onChange: refresh },
+      { options: { channel: "checkin-guest-list-entries", table: "guest_list_entries"  }, onChange: refresh },
+      { options: { channel: "checkin-table-bookings",   table: "table_bookings"        }, onChange: refresh },
+    ]);
 
-    const oneDayChannel = supabase
-      .channel("checkin-oneday-guests")
-      .on("postgres_changes", { event: "*", schema: "public", table: "one_day_list_guests" }, () => fetchData())
-      .subscribe();
-
-    const guestListChannel = supabase
-      .channel("checkin-guest-list-entries")
-      .on("postgres_changes", { event: "*", schema: "public", table: "guest_list_entries" }, () => fetchData())
-      .subscribe();
-
-    const bookingsChannel = supabase
-      .channel("checkin-table-bookings")
-      .on("postgres_changes", { event: "*", schema: "public", table: "table_bookings" }, () => fetchData())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(recurringChannel);
-      supabase.removeChannel(oneDayChannel);
-      supabase.removeChannel(guestListChannel);
-      supabase.removeChannel(bookingsChannel);
-    };
+    return unsub;
   }, [fetchData]);
 
   return {
